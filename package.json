@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "homepage": "https://danipoo19.github.io/SpotsuFrontend/"
+  "homepage": "https://danipoo19.github.io/SpotsuFrontend/",
 
   "scripts": {
     "dev": "vite",
