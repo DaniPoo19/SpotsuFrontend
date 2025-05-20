@@ -3,21 +3,23 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { toast } from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
-import { LoginDTO } from '../../types/dtos';
+import { RegisterDTO } from '../../types/dtos';
 import { DocumentTypeDTO } from '../../types/dtos';
 import { mastersService } from '../../services/masters.service';
 import icono2 from '@/assets/2.png';
 import { Eye, EyeOff } from 'lucide-react';
 
-export const LoginPage = () => {
+export const RegisterAccountPage = () => {
   const navigate = useNavigate();
-  const { login } = useAuth();
-  const [formData, setFormData] = useState<LoginDTO>({
+  const { register } = useAuth();
+  const [formData, setFormData] = useState<RegisterDTO>({
     document_number: '',
     password: '',
+    role_id: '2', // ID del rol "usuario"
     document_type_id: ''
   });
   const [documentTypes, setDocumentTypes] = useState<DocumentTypeDTO[]>([]);
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
@@ -35,12 +37,47 @@ export const LoginPage = () => {
     loadDocumentTypes();
   }, []);
 
+  const validateForm = () => {
+    if (!formData.document_type_id) {
+      setError('Por favor seleccione un tipo de documento');
+      return false;
+    }
+
+    if (!formData.document_number.trim()) {
+      setError('Por favor ingrese su número de documento');
+      return false;
+    }
+
+    if (!/^\d+$/.test(formData.document_number)) {
+      setError('El número de documento debe contener solo números');
+      return false;
+    }
+
+    if (!formData.password) {
+      setError('Por favor ingrese una contraseña');
+      return false;
+    }
+
+    if (formData.password.length < 6) {
+      setError('La contraseña debe tener al menos 6 caracteres');
+      return false;
+    }
+
+    if (formData.password !== confirmPassword) {
+      setError('Las contraseñas no coinciden. Por favor, verifique e intente nuevamente.');
+      return false;
+    }
+
+    return true;
+  };
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({
       ...prev,
       [name]: value
     }));
+    setError(''); // Limpiar error al cambiar el campo
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -48,23 +85,23 @@ export const LoginPage = () => {
     setLoading(true);
     setError('');
 
-    try {
-      if (!formData.document_number || !formData.password || !formData.document_type_id) {
-        setError('Por favor complete todos los campos');
-        return;
-      }
+    if (!validateForm()) {
+      setLoading(false);
+      return;
+    }
 
-      await login(formData);
-      toast.success('¡Bienvenido!');
-      navigate('/dashboard');
+    try {
+      await register(formData);
+      toast.success('¡Cuenta creada exitosamente!');
+      navigate('/login');
     } catch (error: any) {
-      console.error('Error en login:', error);
+      console.error('Error en registro:', error);
       
-      if (error.message?.includes('no existe') || error.message?.includes('no registrado')) {
-        toast.error('Usuario no registrado. Por favor, regístrese primero.');
-        navigate('/register-account');
+      if (error.message?.includes('ya existe') || error.message?.includes('ya registrado')) {
+        toast.error('Esta cédula ya está registrada. Por favor, inicie sesión.');
+        navigate('/login');
       } else {
-        setError(error.message || 'Error al iniciar sesión');
+        setError(error.message || 'Error al registrar usuario');
       }
     } finally {
       setLoading(false);
@@ -94,7 +131,7 @@ export const LoginPage = () => {
               transition={{ delay: 0.2 }}
               className="text-2xl font-bold text-[#006837]"
             >
-              SPOSTU
+              Crear Cuenta
             </motion.h2>
             <motion.p
               initial={{ opacity: 0 }}
@@ -102,7 +139,7 @@ export const LoginPage = () => {
               transition={{ delay: 0.3 }}
               className="text-gray-600"
             >
-              Sistema de gestión deportiva universitaria
+              Complete sus datos para crear su cuenta
             </motion.p>
           </div>
 
@@ -175,6 +212,23 @@ export const LoginPage = () => {
                 </div>
               </div>
 
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Confirmar Contraseña
+                </label>
+                <div className="relative">
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    className="w-full px-4 py-2 border rounded-xl focus:ring-2 focus:ring-[#006837] focus:border-transparent transition-all pr-10"
+                    placeholder="Confirme su contraseña"
+                    required
+                    disabled={loading}
+                  />
+                </div>
+              </div>
+
               {error && (
                 <motion.div
                   initial={{ opacity: 0, y: -10 }}
@@ -195,21 +249,21 @@ export const LoginPage = () => {
                 {loading ? (
                   <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
                 ) : (
-                  'Iniciar Sesión'
+                  'Crear Cuenta'
                 )}
               </motion.button>
 
               <div className="text-center">
                 <p className="text-sm text-gray-600">
-                  ¿No tienes una cuenta?{' '}
+                  ¿Ya tienes una cuenta?{' '}
                   <motion.button
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
                     type="button"
-                    onClick={() => navigate('/register-account')}
+                    onClick={() => navigate('/login')}
                     className="text-[#006837] hover:text-[#005828] font-medium"
                   >
-                    Regístrate aquí
+                    Inicia sesión aquí
                   </motion.button>
                 </p>
               </div>
@@ -219,4 +273,4 @@ export const LoginPage = () => {
       </div>
     </div>
   );
-};
+}; 

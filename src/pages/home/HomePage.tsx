@@ -1,4 +1,5 @@
 import React from 'react';
+import admin from '@/assets/adminsitrativo.jpg';
 import { useNavigate } from 'react-router-dom';
 import { ArrowRight } from 'lucide-react';
 
@@ -10,7 +11,7 @@ export const HomePage = () => {
       <div className="max-w-4xl mx-auto">
         <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
           <img
-            src="https://images.unsplash.com/photo-1517649763962-0c623066013b?w=1600"
+            src={admin}
             alt="Sports"
             className="w-full h-64 object-cover"
           />

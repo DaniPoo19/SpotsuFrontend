@@ -112,19 +112,19 @@ export const AspirantsList = () => {
               }, {} as Record<string, typeof aspirant.sportsHistory[0]>);
 
               return (
-                <tr key={aspirant.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4">
-                    <div className="flex items-center">
-                      <div>
-                        <div className="font-medium text-gray-900">{aspirant.name}</div>
-                        <div className="text-gray-500">{aspirant.personalInfo.email}</div>
-                      </div>
+              <tr key={aspirant.id} className="hover:bg-gray-50">
+                <td className="px-6 py-4">
+                  <div className="flex items-center">
+                    <div>
+                      <div className="font-medium text-gray-900">{aspirant.name}</div>
+                      <div className="text-gray-500">{aspirant.personalInfo.email}</div>
                     </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="text-sm text-gray-900">{aspirant.personalInfo.idType}</div>
-                    <div className="text-sm text-gray-500">{aspirant.personalInfo.idNumber}</div>
-                  </td>
+                  </div>
+                </td>
+                <td className="px-6 py-4">
+                  <div className="text-sm text-gray-900">{aspirant.personalInfo.idType}</div>
+                  <div className="text-sm text-gray-500">{aspirant.personalInfo.idNumber}</div>
+                </td>
                   <td className="px-6 py-4">
                     <div className="flex flex-wrap gap-2">
                       {Object.values(uniqueSports).map((sport, index) => (
@@ -134,26 +134,26 @@ export const AspirantsList = () => {
                       ))}
                     </div>
                   </td>
-                  <td className="px-6 py-4">
+                <td className="px-6 py-4">
                     {Object.values(uniqueSports).every(sport => sport.approved) ? (
-                      <span className="px-2 py-1 text-sm font-semibold text-green-800 bg-green-100 rounded-full">
-                        Completo
-                      </span>
-                    ) : (
+                    <span className="px-2 py-1 text-sm font-semibold text-green-800 bg-green-100 rounded-full">
+                      Completo
+                    </span>
+                  ) : (
                       <span className="px-2 py-1 text-sm font-semibold text-yellow-800 bg-yellow-100 rounded-full">
-                        Pendiente
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-6 py-4">
-                    <button
+                      Pendiente
+                    </span>
+                  )}
+                </td>
+                <td className="px-6 py-4">
+                  <button
                       onClick={() => handleViewDetails(aspirant)}
-                      className="text-[#006837] hover:text-[#A8D08D] font-medium"
-                    >
-                      Ver detalles
-                    </button>
-                  </td>
-                </tr>
+                    className="text-[#006837] hover:text-[#A8D08D] font-medium"
+                  >
+                    Ver detalles
+                  </button>
+                </td>
+              </tr>
               );
             })}
           </tbody>

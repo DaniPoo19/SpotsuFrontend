@@ -172,7 +172,7 @@ export const AspirantDetails = () => {
                         {sport.sport}
                       </span>
                     ))}
-                  </div>
+                </div>
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">Estado de Documentos</p>

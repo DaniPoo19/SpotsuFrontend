@@ -1,61 +1,96 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { toast } from 'react-hot-toast';
+import { authService } from '../services/auth.service';
+import { LoginDTO, RegisterDTO, UserDTO } from '../types/dtos';
 
 interface AuthContextType {
-  user: {
-    name: string;
-    email: string;
-    avatar?: string;
-    role?: string;
-  } | null;
+  user: UserDTO | null;
+  loading: boolean;
+  login: (credentials: LoginDTO) => Promise<void>;
+  register: (userData: RegisterDTO) => Promise<void>;
+  logout: () => Promise<void>;
   isAuthenticated: boolean;
-  login: (email: string, password: string) => Promise<boolean>;
-  logout: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<AuthContextType['user']>(() => {
-    const savedUser = localStorage.getItem('user');
-    return savedUser ? JSON.parse(savedUser) : null;
-  });
+  const [user, setUser] = useState<UserDTO | null>(null);
+  const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
 
   useEffect(() => {
-    if (user) {
-      localStorage.setItem('user', JSON.stringify(user));
-    } else {
-      localStorage.removeItem('user');
-    }
-  }, [user]);
+    checkAuth();
+  }, []);
 
-  const login = async (email: string, password: string): Promise<boolean> => {
-    // Aquí iría la lógica real de autenticación
-    if (email === 'admin@spostu.com' && password === 'admin123') {
-      const userData = {
-        name: 'Administrador',
-        email: 'admin@spostu.com',
-        avatar: 'https://images.unsplash.com/photo-1633332755192-727a05c4013d?w=400',
-        role: 'admin'
-      };
-      setUser(userData);
-      localStorage.setItem('user', JSON.stringify(userData));
-      return true;
+  const checkAuth = async () => {
+    try {
+      if (authService.isAuthenticated()) {
+        const userData = await authService.getProfile();
+        setUser(userData);
+      }
+    } catch (error) {
+      console.error('Error al verificar autenticación:', error);
+    } finally {
+      setLoading(false);
     }
-    return false;
   };
 
-  const logout = () => {
-    setUser(null);
-    localStorage.removeItem('user');
+  const login = async (credentials: LoginDTO) => {
+    try {
+      setLoading(true);
+      const { user: userData } = await authService.login(credentials);
+      setUser(userData);
+      toast.success('¡Bienvenido!');
+      navigate('/dashboard');
+    } catch (error: any) {
+      toast.error(error.message);
+      throw error;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const register = async (userData: RegisterDTO) => {
+    try {
+      setLoading(true);
+      await authService.register(userData);
+      toast.success('¡Registro exitoso! Por favor, inicie sesión.');
+      navigate('/login');
+    } catch (error: any) {
+      toast.error(error.message);
+      throw error;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const logout = async () => {
+    try {
+      setLoading(true);
+      await authService.logout();
+      setUser(null);
+      toast.success('Sesión cerrada');
+      navigate('/login');
+    } catch (error: any) {
+      toast.error('Error al cerrar sesión');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const value = {
+    user,
+    loading,
+    login,
+    register,
+    logout,
+    isAuthenticated: !!user
   };
 
   return (
-    <AuthContext.Provider value={{
-      user,
-      isAuthenticated: !!user,
-      login,
-      logout
-    }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );
@@ -64,7 +99,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
+    throw new Error('useAuth debe ser usado dentro de un AuthProvider');
   }
   return context;
 }; 

@@ -1,52 +1,26 @@
 import React from 'react';
-import { ArrowRight } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export const Home = () => {
-  const navigate = useNavigate();
-
   return (
-    <div className="w-full">
-      <div className="max-w-4xl mx-auto">
-        <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
-          <img
-            src="https://images.unsplash.com/photo-1517649763962-0c623066013b?w=1600"
-            alt="Sports"
-            className="w-full h-64 object-cover"
-          />
-          <div className="p-8">
-            <h1 className="text-4xl font-bold text-[#006837] mb-4">
-              Bienvenido a SPOSTU
-            </h1>
-            <p className="text-gray-600 mb-6">
-              Sistema de gestión deportiva universitaria para el seguimiento y evaluación
-              de aspirantes deportistas.
+    <div className="container mx-auto p-4">
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-2xl text-center text-[#006837]">
+            Bienvenido al Sistema SPOSTU
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="text-center space-y-4">
+            <p className="text-gray-600">
+              Sistema de Postulación y Seguimiento de Talento Universitario
             </p>
-            <div className="grid md:grid-cols-2 gap-6">
-              <button
-                onClick={() => navigate('/dashboard/inicio')}
-                className="bg-[#006837] text-white p-6 rounded-xl hover:bg-[#005828] transition-colors text-left group"
-              >
-                <h3 className="text-xl font-bold mb-2 flex items-center gap-2">
-                  Panel de Control 
-                  <ArrowRight size={20} className="transform group-hover:translate-x-1 transition-transform" />
-                </h3>
-                <p>Accede a las estadísticas y métricas principales del sistema.</p>
-              </button>
-              <button
-                onClick={() => navigate('/dashboard/aspirants')}
-                className="bg-[#A8D08D] text-[#006837] p-6 rounded-xl hover:bg-[#97c077] transition-colors text-left group"
-              >
-                <h3 className="text-xl font-bold mb-2 flex items-center gap-2">
-                  Gestión de Aspirantes 
-                  <ArrowRight size={20} className="transform group-hover:translate-x-1 transition-transform" />
-                </h3>
-                <p>Administra y revisa la información de los aspirantes registrados.</p>
-              </button>
-            </div>
+            <p className="text-gray-600">
+              Universidad de Córdoba
+            </p>
           </div>
-        </div>
-      </div>
+        </CardContent>
+      </Card>
     </div>
   );
-};
+}; 
