@@ -2,12 +2,10 @@
 export interface LoginDTO {
   document_number: string;
   password: string;
-  document_type_id: string;
 }
 
 export interface LoginResponseDTO {
   access_token: string;
-  user: UserDTO;
 }
 
 export interface RegisterDTO {
@@ -24,8 +22,6 @@ export interface UserDTO {
     id: string;
     name: string;
   };
-  created_at: string;
-  updated_at: string;
 }
 
 // Person DTOs
@@ -77,7 +73,10 @@ export interface CreateAthleteDTO extends CreatePersonDTO {
 export interface SportDTO {
   id: string;
   name: string;
+  description: string;
   is_active: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface CreateSportDTO {
@@ -99,12 +98,13 @@ export interface SportHistoryDTO {
 }
 
 export interface CreateSportHistoryDTO {
-  athlete_id: string;
   sport_id: string;
   start_date: string;
-  end_date?: string;
+  end_date: string;
   institution: string;
   achievements: string;
+  postulation_id: string;
+  athlete_id: string;
 }
 
 // Document Type DTOs
@@ -195,6 +195,8 @@ export interface SportsCompetitionCategoryDTO {
   name: string;
   description: string;
   is_active: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 // Competition Hierarchy DTOs
@@ -202,18 +204,22 @@ export interface CompetitionHierarchyDTO {
   id: string;
   name: string;
   description: string;
-  sports_competition_category_id: string;
+  category_id: string;
   is_active: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 // Attached Document DTOs
 export interface AttachedDocumentDTO {
   id: string;
-  file_name: string;
-  file_url: string;
   document_type_id: string;
   reference_id: string;
-  reference_type: 'sport_history' | 'achievement';
+  reference_type: string;
+  file_name: string;
+  file_path: string;
+  file_size: number;
+  mime_type: string;
   created_at: string;
   updated_at: string;
 }
@@ -222,5 +228,45 @@ export interface CreateAttachedDocumentDTO {
   file: File;
   document_type_id: string;
   reference_id: string;
-  reference_type: 'sport_history' | 'achievement';
+  reference_type: string;
+}
+
+export interface SportsAchievementDTO {
+  id: string;
+  sport_history_id: string;
+  competition_category_id: string;
+  competition_hierarchy_id: string;
+  name: string;
+  description: string;
+  date: string;
+  position: string;
+  score: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateSportsAchievementDTO {
+  sport_history_id: string;
+  competition_category_id: string;
+  competition_hierarchy_id: string;
+  name: string;
+  description: string;
+  date: string;
+  position: string;
+  score: string;
+  postulation_id: string;
+  achievement_type_id: string;
+}
+
+export interface CreateUserDTO {
+  document_number: string;
+  password: string;
+  role_id: string;
+}
+
+export interface UserRole {
+  id: string;
+  role: 'ADMIN' | 'ATHLETE';
+  name: string;
+  email: string;
 } 

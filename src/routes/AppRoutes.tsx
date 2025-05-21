@@ -22,54 +22,37 @@ const PublicRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
 // Componente para rutas protegidas (solo accesibles con sesión)
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { isAuthenticated } = useAuth();
-  return isAuthenticated ? <>{children}</> : <Navigate to="/login" />;
+  return <>{children}</>;
 };
 
 export const AppRoutes = () => {
   return (
     <Routes>
       {/* Rutas públicas */}
-      <Route
-        path="/login"
-        element={
-          <PublicRoute>
-            <LoginPage />
-          </PublicRoute>
-        }
-      />
-      <Route
-        path="/register-account"
-        element={
-          <PublicRoute>
-            <RegisterAccountPage />
-          </PublicRoute>
-        }
-      />
-      <Route
-        path="/register-personal-data"
-        element={
-          <ProtectedRoute>
-            <PersonalDataForm />
-          </ProtectedRoute>
-        }
-      />
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/register" element={<RegisterAccountPage />} />
+      <Route path="/register-personal-data" element={<PersonalDataForm />} />
+      <Route path="/par-q" element={<ParQForm />} />
 
       {/* Rutas protegidas */}
       <Route
-        path="/par-q"
+        path="/sports-history"
         element={
           <ProtectedRoute>
-            <ParQForm />
+            <SportsHistoryPage />
           </ProtectedRoute>
         }
       />
 
-      {/* Redirecciones */}
-      <Route path="/" element={<Navigate to="/login" />} />
-      <Route path="/sports-history" element={<SportsHistoryPage />} />
-      <Route path="/unauthorized" element={<div>No tienes permiso para acceder a esta página</div>} />
-      <Route path="/dashboard" element={<ProtectedLayout />}>
+      {/* Rutas del dashboard */}
+      <Route
+        path="/dashboard"
+        element={
+          <ProtectedRoute>
+            <ProtectedLayout />
+          </ProtectedRoute>
+        }
+      >
         <Route index element={<Navigate to="home" replace />} />
         <Route path="home" element={<HomePage />} />
         <Route path="aspirants" element={<AspirantsPage />} />
@@ -78,6 +61,10 @@ export const AppRoutes = () => {
         <Route path="profile" element={<ProfilePage />} />
         <Route path="settings" element={<SettingsPage />} />
       </Route>
+
+      {/* Redirecciones */}
+      <Route path="/" element={<Navigate to="/login" />} />
+      <Route path="/unauthorized" element={<div>No tienes permiso para acceder a esta página</div>} />
       <Route path="*" element={<Navigate to="/login" />} />
     </Routes>
   );

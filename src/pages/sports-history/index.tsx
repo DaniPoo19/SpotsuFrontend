@@ -3,10 +3,11 @@ import { useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { differenceInYears, parse } from 'date-fns';
+import { useNavigate } from 'react-router-dom';
 import { 
   Search, Plus, X, Upload, Trophy, Calendar, Medal, 
   FileCheck, ChevronDown, ChevronUp, Clipboard, GraduationCap,
-  AlertCircle, CheckCircle2, Loader2, Edit2, Trash2, Save, FileText
+  AlertCircle, CheckCircle2, Loader2, Edit2, Trash2, Save, FileText, User
 } from 'lucide-react';
 import {
   Form,
@@ -28,9 +29,19 @@ import {
   SportDTO, 
   SportsCompetitionCategoryDTO, 
   CompetitionHierarchyDTO,
-  AttachedDocumentDTO 
+  AttachedDocumentDTO,
+  SportsAchievementDTO,
+  CreateSportsAchievementDTO,
+  SportHistoryDTO,
+  CreateSportHistoryDTO,
+  UserRole,
+  PersonDTO
 } from '../../types/dtos';
 import { Eye, EyeOff } from 'lucide-react';
+import { useAuth } from '../../contexts/AuthContext';
+import { postulationService } from '../../services/postulation.service';
+import { api } from '../../lib/axios';
+import { authService } from '../../services/auth.service';
 
 const sports = [
   'Fútbol', 'Baloncesto', 'Voleibol', 'Natación', 'Atletismo',
@@ -38,99 +49,147 @@ const sports = [
   'Karate', 'Taekwondo', 'Judo', 'Rugby', 'Ajedrez'
 ];
 
-const COMPETITION_TYPES = {
-  'Juegos intercolegiados': [
-    'Fase municipal',
-    'Fase departamental',
-    'Fase nacional',
-    'Fase internacional'
-  ],
-  'Deporte asociado': [
-    'Interclubes',
-    'Campeonatos departamentales',
-    'Interligas',
-    'Campeonatos zonales o regionales',
-    'Campeonato nacional'
-  ],
-  'Deporte federado': [
-    'Selección nacional',
-    'Participaciones internacionales',
-    'Reconocimientos al mérito deportivo'
-  ]
-} as const;
+// Tipos de datos
+interface Sport {
+  id: string;
+  name: string;
+  is_active: boolean;
+}
 
+interface CompetitionCategory {
+  id: string;
+  name: string;
+  is_active: boolean;
+}
+
+interface CompetitionHierarchy {
+  id: string;
+  name: string;
+  category_id: string;
+  description?: string;
+}
+
+interface AttachedDocumentType {
+  id: string;
+  name: string;
+}
+
+interface PostulationSport {
+  id: string;
+  postulation_id: string;
+  sport_id: string;
+}
+
+interface SportsAchievement {
+  id: string;
+  postulation_sport_id: string;
+  achievement_type_id: string;
+  competition_category_id: string;
+  competition_hierarchy_id: string;
+  achievement_date: string;
+  description: string;
+}
+
+interface Achievement {
+  id?: string;
+  achievement_type_id: string;
+  competition_category_id: string;
+  competition_hierarchy_id: string;
+  achievement_date: string;
+  description: string;
+  attached_document?: File;
+  attached_document_type_id?: string;
+  competitionCategory?: string;
+  competitionType?: string;
+  competitionName?: string;
+  date?: string;
+  position?: string;
+  score?: string;
+}
+
+interface SportHistory {
+  sport_id: string;
+  achievements: Achievement[];
+  sport?: Sport;
+  startDate?: string;
+  endDate?: string;
+  institution?: string;
+}
+
+interface FormData {
+  sportsHistory: SportHistory[];
+  documents?: {
+    consentForm?: File;
+    MedicCertificate?: File;
+  };
+}
+
+// Esquemas de validación
 const achievementSchema = z.object({
-  competitionName: z.string().min(1, 'El nombre de la competencia es requerido'),
-  competitionCategory: z.string().min(1, 'La categoría es requerida'),
-  competitionType: z.string().min(1, 'El tipo de competencia es requerido'),
-  certificate: z.any().optional(),
+  id: z.string().optional(),
+  achievement_type_id: z.string().min(1, "El tipo de logro es requerido"),
+  competition_category_id: z.string().min(1, "La categoría es requerida"),
+  competition_hierarchy_id: z.string().min(1, "El tipo de competencia es requerido"),
+  achievement_date: z.string().min(1, "La fecha es requerida"),
+  description: z.string().min(1, "La descripción es requerida"),
+  attached_document: z.any().optional(),
+  attached_document_type_id: z.string().optional(),
+  competitionCategory: z.string().optional(),
+  competitionType: z.string().optional(),
+  competitionName: z.string().optional(),
+  date: z.string().optional(),
+  position: z.string().optional(),
+  score: z.string().optional()
 });
 
 const sportHistorySchema = z.object({
-  sport: z.string().min(1, 'El deporte es requerido'),
-  startDate: z.string().min(1, 'La fecha de inicio es requerida'),
-  endDate: z.string().min(1, 'La fecha de fin es requerida'),
-  institution: z.string().optional(),
-  achievements: z.array(z.object({
-    id: z.string().optional(),
-    sportHistoryId: z.string().optional(),
-    competitionName: z.string().min(1, 'El nombre de la competencia es requerido'),
-    competitionCategory: z.string().min(1, 'La categoría es requerida'),
-    competitionType: z.string().min(1, 'El tipo de competencia es requerido'),
-    description: z.string().optional(),
-    date: z.string().min(1, 'La fecha es requerida'),
-    position: z.string().optional(),
-    score: z.string().optional(),
-    certificate: z.any().optional()
-  }))
-});
-
-const documentsSchema = z.object({
-  consentForm: z.any().optional(),
-  MedicCertificate: z.any().optional(),
+  sport_id: z.string().min(1, "El deporte es requerido"),
+  achievements: z.array(achievementSchema),
+  sport: z.any().optional(),
+  startDate: z.string().optional(),
+  endDate: z.string().optional(),
+  institution: z.string().optional()
 });
 
 const formSchema = z.object({
   sportsHistory: z.array(sportHistorySchema),
-  documents: documentsSchema,
+  documents: z.object({
+    consentForm: z.any().optional(),
+    MedicCertificate: z.any().optional()
+  }).optional()
 });
 
 const today = new Date();
 
 export const SportsHistoryPage = () => {
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const [userData, setUserData] = useState<PersonDTO | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [userRole, setUserRole] = useState<UserRole | null>(null);
+  const [postulationId, setPostulationId] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState('');
-  const [sports, setSports] = useState<SportDTO[]>([]);
-  const [filteredSports, setFilteredSports] = useState<SportDTO[]>([]);
+  const [sports, setSports] = useState<Sport[]>([]);
+  const [filteredSports, setFilteredSports] = useState<Sport[]>([]);
   const [selectedSports, setSelectedSports] = useState<string[]>([]);
   const [showSportSearch, setShowSportSearch] = useState(false);
   const [expandedSports, setExpandedSports] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [achievementInProgress, setAchievementInProgress] = useState<{sportIndex: number, achievementIndex: number} | null>(null);
   const [editingAchievement, setEditingAchievement] = useState<{sportIndex: number, achievementIndex: number} | null>(null);
-  const [categories, setCategories] = useState<SportsCompetitionCategoryDTO[]>([]);
-  const [competitionTypes, setCompetitionTypes] = useState<CompetitionHierarchyDTO[]>([]);
-  const [selectedCategory, setSelectedCategory] = useState<string>('');
-  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
-  const [uploadedDocuments, setUploadedDocuments] = useState<AttachedDocumentDTO[]>([]);
-  const [showAddSport, setShowAddSport] = useState(false);
-  const [showAddAchievement, setShowAddAchievement] = useState(false);
+  const [categories, setCategories] = useState<CompetitionCategory[]>([]);
   const [loading, setLoading] = useState(false);
-
-  // Estados para manejo de carga y errores
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [uploadedDocuments, setUploadedDocuments] = useState<any[]>([]);
   const [isLoadingSports, setIsLoadingSports] = useState(false);
   const [isLoadingCategories, setIsLoadingCategories] = useState(false);
-  const [isLoadingCompetitionTypes, setIsLoadingCompetitionTypes] = useState(false);
   const [isSubmittingAchievement, setIsSubmittingAchievement] = useState(false);
   const [isSubmittingHistory, setIsSubmittingHistory] = useState(false);
 
-  const form = useForm<z.infer<typeof formSchema>>({
+  const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      sportsHistory: [],
-      documents: {
-        consentForm: null,
-        MedicCertificate: null,
-      }
+      sportsHistory: []
     }
   });
 
@@ -139,102 +198,77 @@ export const SportsHistoryPage = () => {
     name: "sportsHistory"
   });
 
-  // Cargar datos iniciales
+  // Cargar deportes y categorías desde el backend
   useEffect(() => {
     const loadInitialData = async () => {
-      setIsLoadingSports(true);
-      setIsLoadingCategories(true);
+      setLoading(true);
       try {
         const [sportsData, categoriesData] = await Promise.all([
           sportsService.getSports(),
-          sportsService.getCompetitionCategories()
+          api.get('/sports-competition-categories').then(res => res.data.data)
         ]);
-        setSports(sportsData.filter(sport => sport.is_active));
-        setCategories(categoriesData.filter(category => category.is_active));
+        setSports(sportsData);
+        setCategories(categoriesData);
+        setFilteredSports(sportsData);
       } catch (error) {
         console.error('Error al cargar datos iniciales:', error);
         toast.error('Error al cargar datos iniciales');
       } finally {
-        setIsLoadingSports(false);
-        setIsLoadingCategories(false);
+        setLoading(false);
       }
     };
     loadInitialData();
   }, []);
 
-  // Cargar tipos de competencia cuando cambia la categoría
+  // Filtrar deportes cuando cambia el término de búsqueda
   useEffect(() => {
-    const loadCompetitionTypes = async () => {
-      if (!selectedCategory) {
-        setCompetitionTypes([]);
-        return;
-      }
-
-      setIsLoadingCompetitionTypes(true);
-      try {
-        const types = await sportsService.getCompetitionHierarchyByCategory(selectedCategory);
-        setCompetitionTypes(types);
-      } catch (error) {
-        console.error('Error al cargar tipos de competencia:', error);
-        toast.error('Error al cargar tipos de competencia');
-      } finally {
-        setIsLoadingCompetitionTypes(false);
-      }
-    };
-    loadCompetitionTypes();
-  }, [selectedCategory]);
-
-  useEffect(() => {
-    const filtered = sports.filter(
-      sport => sport.name.toLowerCase().includes(searchTerm.toLowerCase()) &&
-      !selectedSports.includes(sport.id)
-    );
-    setFilteredSports(filtered);
+    if (searchTerm.trim() === '') {
+      setFilteredSports(sports.filter(sport => !selectedSports.includes(sport.id)));
+    } else {
+      const filtered = sports.filter(
+        sport => 
+          sport.name.toLowerCase().includes(searchTerm.toLowerCase()) &&
+          !selectedSports.includes(sport.id)
+      );
+      setFilteredSports(filtered);
+    }
   }, [searchTerm, selectedSports, sports]);
 
-  const calculateExperience = (startDate: string, endDate: string) => {
+  const calculateExperience = (startDate: string | undefined, endDate: string | undefined) => {
     if (!startDate || !endDate) return 0;
     const start = parse(startDate, 'yyyy-MM-dd', new Date());
     const end = parse(endDate, 'yyyy-MM-dd', new Date());
     return differenceInYears(end, start);
   };
 
-  const handleSportSelect = (sport: SportDTO) => {
+  const handleSportSelect = (sport: Sport) => {
     if (!selectedSports.includes(sport.id)) {
-      setSelectedSports([sport.id, ...selectedSports]);
+      setSelectedSports([...selectedSports, sport.id]);
       append({
-        sport: sport.name,
-        startDate: '',
-        endDate: '',
-        institution: '',
+        sport_id: sport.id,
+        sport: sport,
         achievements: []
       });
-      setSearchTerm('');
-      setShowSportSearch(false);
-      setExpandedSports([sport.id, ...expandedSports]);
     }
+    setShowSportSearch(false);
+    setSearchTerm('');
   };
 
-  const toggleSportExpansion = (sport: string) => {
+  const toggleSportExpansion = (sportName: string) => {
     setExpandedSports(prev => 
-      prev.includes(sport) 
-        ? prev.filter(s => s !== sport)
-        : [...prev, sport]
+      prev.includes(sportName) 
+        ? prev.filter(s => s !== sportName)
+        : [...prev, sportName]
     );
   };
 
   const handleAddAchievement = (sportIndex: number) => {
-    const newAchievement = {
-      id: undefined,
-      sportHistoryId: undefined,
-      competitionName: '',
-      competitionCategory: '',
-      competitionType: '',
+    const newAchievement: Achievement = {
+      achievement_type_id: '',
+      competition_category_id: '',
+      competition_hierarchy_id: '',
+      achievement_date: new Date().toISOString().split('T')[0],
       description: '',
-      date: new Date().toISOString().split('T')[0],
-      position: '',
-      score: '',
-      certificate: null
     };
 
     const currentAchievements = form.getValues(`sportsHistory.${sportIndex}.achievements`) || [];
@@ -242,125 +276,360 @@ export const SportsHistoryPage = () => {
     setAchievementInProgress({ sportIndex, achievementIndex: currentAchievements.length });
   };
 
-  const handleAchievementComplete = async (sportIndex: number, achievementIndex: number) => {
-    const achievement = form.watch(`sportsHistory.${sportIndex}.achievements.${achievementIndex}`);
-    
-    if (!achievement.competitionName || !achievement.competitionCategory || !achievement.competitionType || !achievement.date) {
-      toast.error('Por favor, completa todos los campos requeridos del logro');
+  const handleCategoryChange = (categoryId: string, sportIndex: number, achievementIndex: number) => {
+    if (!categoryId) {
+      toast.error('Por favor seleccione una categoría válida');
       return;
     }
 
-    if (!achievement.certificate) {
-      toast.error('Es obligatorio subir un certificado para el logro');
+    // Actualizar los valores del formulario
+    form.setValue(`sportsHistory.${sportIndex}.achievements.${achievementIndex}.competition_category_id`, categoryId);
+    form.setValue(`sportsHistory.${sportIndex}.achievements.${achievementIndex}.competitionCategory`, categories.find(cat => cat.id === categoryId)?.name || '');
+    
+    // Limpiar los valores relacionados con el tipo de competencia
+    form.setValue(`sportsHistory.${sportIndex}.achievements.${achievementIndex}.competition_hierarchy_id`, '');
+    form.setValue(`sportsHistory.${sportIndex}.achievements.${achievementIndex}.competitionType`, '');
+  };
+
+  const handleCompetitionTypeChange = (typeId: string, sportIndex: number, achievementIndex: number) => {
+    if (!typeId) {
+      toast.error('Por favor seleccione un tipo de competencia válido');
+      return;
+    }
+
+    // Actualizar los valores del formulario
+    form.setValue(`sportsHistory.${sportIndex}.achievements.${achievementIndex}.competition_hierarchy_id`, typeId);
+    form.setValue(`sportsHistory.${sportIndex}.achievements.${achievementIndex}.competitionType`, sports.find(s => s.id === typeId)?.name || '');
+  };
+
+  // Componente para el selector de categoría
+  const AchievementCategoryAndType = ({ sportIndex, achievementIndex }: { sportIndex: number, achievementIndex: number }) => {
+    const categoryId = form.watch(`sportsHistory.${sportIndex}.achievements.${achievementIndex}.competition_category_id`);
+    const [competitionTypes, setCompetitionTypes] = useState<CompetitionHierarchy[]>([]);
+    const [isLoadingTypes, setIsLoadingTypes] = useState(false);
+
+    useEffect(() => {
+      const loadCompetitionTypes = async () => {
+        if (!categoryId) {
+          setCompetitionTypes([]);
+          return;
+        }
+
+        setIsLoadingTypes(true);
+        try {
+          const response = await api.get(`/sports-achievements/by-sport-competition-category/${categoryId}`);
+          console.log('Respuesta completa:', response);
+          
+          if (response.data && Array.isArray(response.data.data)) {
+            // Transformar los datos para incluir el nombre del tipo de competencia
+            const transformedTypes = response.data.data.map((item: any) => ({
+              id: item.id,
+              name: item.competition_hierarchy?.name || 'Sin nombre',
+              competition_hierarchy: item.competition_hierarchy,
+              score: item.score,
+              is_active: item.is_active
+            }));
+            console.log('Tipos transformados:', transformedTypes);
+            setCompetitionTypes(transformedTypes);
+          } else {
+            console.log('No se encontraron tipos de competencia en la respuesta:', response.data);
+            setCompetitionTypes([]);
+            toast.error('No se encontraron tipos de competencia para esta categoría');
+          }
+        } catch (error) {
+          console.error('Error al cargar tipos de competencia:', error);
+          toast.error('Error al cargar tipos de competencia');
+          setCompetitionTypes([]);
+        } finally {
+          setIsLoadingTypes(false);
+        }
+      };
+
+      loadCompetitionTypes();
+    }, [categoryId]);
+
+    return (
+      <>
+        <FormField
+          control={form.control}
+          name={`sportsHistory.${sportIndex}.achievements.${achievementIndex}.competition_category_id`}
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel className="text-gray-700">Categoría</FormLabel>
+              <FormControl>
+                <select
+                  value={field.value || ''}
+                  onChange={(e) => {
+                    const selectedCategoryId = e.target.value;
+                    field.onChange(selectedCategoryId);
+                    // Limpiar tipo de competencia al cambiar categoría
+                    form.setValue(`sportsHistory.${sportIndex}.achievements.${achievementIndex}.competition_hierarchy_id`, '');
+                    form.setValue(`sportsHistory.${sportIndex}.achievements.${achievementIndex}.competitionType`, '');
+                  }}
+                  className="w-full p-2 border rounded focus:ring-2 focus:ring-[#006837] focus:border-transparent"
+                >
+                  <option value="">Seleccione una categoría</option>
+                  {categories.map(category => (
+                    <option key={category.id} value={category.id}>{category.name}</option>
+                  ))}
+                </select>
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={form.control}
+          name={`sportsHistory.${sportIndex}.achievements.${achievementIndex}.competition_hierarchy_id`}
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel className="text-gray-700">Tipo de Competencia</FormLabel>
+              <FormControl>
+                <select
+                  value={field.value || ''}
+                  onChange={(e) => {
+                    const selectedTypeId = e.target.value;
+                    field.onChange(selectedTypeId);
+                    // Actualizar el nombre del tipo de competencia
+                    const selectedType = competitionTypes.find(type => type.id === selectedTypeId);
+                    if (selectedType) {
+                      form.setValue(
+                        `sportsHistory.${sportIndex}.achievements.${achievementIndex}.competitionType`,
+                        selectedType.competition_hierarchy?.name || selectedType.name
+                      );
+                    }
+                  }}
+                  className="w-full p-2 border rounded focus:ring-2 focus:ring-[#006837] focus:border-transparent"
+                  disabled={!categoryId || isLoadingTypes}
+                >
+                  <option value="">Seleccione un tipo</option>
+                  {isLoadingTypes ? (
+                    <option value="" disabled>Cargando tipos...</option>
+                  ) : competitionTypes.length === 0 ? (
+                    <option value="" disabled>No hay tipos disponibles</option>
+                  ) : (
+                    competitionTypes.map(type => (
+                      <option key={type.id} value={type.id}>
+                        {type.competition_hierarchy?.name || type.name}
+                      </option>
+                    ))
+                  )}
+                </select>
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+      </>
+    );
+  };
+
+  const handleAchievementComplete = async (sportIndex: number, achievementIndex: number) => {
+    const sportHistory = form.getValues().sportsHistory[sportIndex];
+    const achievement = sportHistory.achievements[achievementIndex];
+
+    if (!sportHistory.sport_id) {
+      toast.error('Error: Deporte no seleccionado');
+      return;
+    }
+
+    if (!postulationId) {
+      toast.error('Error: No hay una postulación activa');
+      return;
+    }
+
+    if (!achievement.competition_category_id || !achievement.competition_hierarchy_id) {
+      toast.error('Error: Debe seleccionar una categoría y tipo de competencia');
       return;
     }
 
     setIsSubmittingAchievement(true);
     try {
-      // Primero subir el documento
-      const documentResponse = await attachedDocumentsService.uploadDocument({
-        file: achievement.certificate,
-        document_type_id: '1', // Ajustar según el tipo de documento
-        reference_id: achievement.id || 'temp',
-        reference_type: 'achievement'
+      // 1. Primero creamos la relación postulación-deporte
+      const postulationSportResponse = await sportsService.createPostulationSport({
+        postulation_id: postulationId,
+        sport_id: sportHistory.sport_id
       });
 
-      // Luego crear el logro
-      const achievementResponse = await sportsAchievementsService.createAchievement({
-        sport_history_id: achievement.sportHistoryId || '',
-        competition_category_id: achievement.competitionCategory,
-        competition_hierarchy_id: achievement.competitionType,
-        name: achievement.competitionName,
-        description: achievement.description || '',
-        date: achievement.date,
+      if (!postulationSportResponse || !postulationSportResponse.id) {
+        throw new Error('No se pudo crear la relación postulación-deporte');
+      }
+
+      // 2. Luego creamos el logro deportivo usando el ID de la relación
+      const achievementData = {
+        sport_history_id: postulationSportResponse.id,
+        achievement_type_id: achievement.achievement_type_id,
+        competition_category_id: achievement.competition_category_id,
+        competition_hierarchy_id: achievement.competition_hierarchy_id,
+        name: achievement.competitionName || '',
+        description: achievement.description,
+        date: achievement.achievement_date,
         position: achievement.position || '',
-        score: achievement.score || ''
-      });
+        score: achievement.score || '',
+        postulation_id: postulationId
+      };
 
+      const createdAchievement = await sportsService.createSportsAchievement(achievementData);
+
+      // 3. Si hay documentos adjuntos, los subimos
+      if (achievement.attached_document && achievement.attached_document_type_id) {
+        await sportsService.uploadAttachedDocument({
+          sports_achievement_id: createdAchievement.id,
+          attached_document_type_id: achievement.attached_document_type_id,
+          file: achievement.attached_document
+        });
+      }
+
+      toast.success('Logro deportivo registrado exitosamente');
       setAchievementInProgress(null);
-      toast.success('Logro añadido exitosamente');
     } catch (error) {
-      console.error('Error al crear el logro:', error);
-      toast.error('Error al crear el logro');
+      console.error('Error al registrar logro deportivo:', error);
+      toast.error('Error al registrar logro deportivo. Por favor, intente nuevamente.');
     } finally {
       setIsSubmittingAchievement(false);
     }
-  };
-
-  const handleCancelAchievement = (sportIndex: number, achievementIndex: number) => {
-    const achievements = form.watch(`sportsHistory.${sportIndex}.achievements`);
-    form.setValue(
-      `sportsHistory.${sportIndex}.achievements`,
-      achievements.filter((_, i) => i !== achievementIndex)
-    );
-    setAchievementInProgress(null);
-    toast.info('Logro cancelado');
   };
 
   const handleEditAchievement = (sportIndex: number, achievementIndex: number) => {
     setEditingAchievement({ sportIndex, achievementIndex });
   };
 
-  const handleSaveEdit = (sportIndex: number, achievementIndex: number) => {
-    const achievement = form.watch(`sportsHistory.${sportIndex}.achievements.${achievementIndex}`);
-    
-    if (!achievement.competitionName || !achievement.competitionCategory || !achievement.competitionType) {
-      toast.error('Por favor, completa todos los campos del logro');
-      return;
-    }
+  const handleSaveEdit = async (sportIndex: number, achievementIndex: number) => {
+    const achievement = form.getValues(`sportsHistory.${sportIndex}.achievements.${achievementIndex}`);
+    const sport = form.getValues(`sportsHistory.${sportIndex}`);
 
-    setEditingAchievement(null);
-    toast.success('Logro actualizado exitosamente');
+    try {
+      if (achievement.id) {
+        await sportsService.updateSportsAchievement(achievement.id, {
+          achievement_type_id: achievement.achievement_type_id,
+          competition_category_id: achievement.competition_category_id,
+          competition_hierarchy_id: achievement.competition_hierarchy_id,
+          achievement_date: achievement.achievement_date,
+          description: achievement.description
+        });
+
+        if (achievement.attached_document && achievement.attached_document_type_id) {
+          await sportsService.uploadAttachedDocument({
+            sports_achievement_id: achievement.id,
+            attached_document_type_id: achievement.attached_document_type_id,
+            file: achievement.attached_document
+          });
+        }
+      }
+
+      setEditingAchievement(null);
+      toast.success('Logro deportivo actualizado exitosamente');
+    } catch (error) {
+      console.error('Error al actualizar logro:', error);
+      toast.error('Error al actualizar logro deportivo');
+    }
+  };
+
+  const handleCancelAchievement = (sportIndex: number, achievementIndex: number) => {
+    const currentAchievements = form.getValues(`sportsHistory.${sportIndex}.achievements`);
+    form.setValue(
+      `sportsHistory.${sportIndex}.achievements`,
+      currentAchievements.filter((_, index) => index !== achievementIndex)
+    );
+    setAchievementInProgress(null);
+  };
+
+  const handleDeleteAchievement = async (sportIndex: number, achievementIndex: number) => {
+    const achievement = form.getValues(`sportsHistory.${sportIndex}.achievements.${achievementIndex}`);
+    
+    if (achievement.id) {
+      try {
+        await sportsService.deleteSportsAchievement(achievement.id);
+        const currentAchievements = form.getValues(`sportsHistory.${sportIndex}.achievements`);
+        form.setValue(
+          `sportsHistory.${sportIndex}.achievements`,
+          currentAchievements.filter((_, index) => index !== achievementIndex)
+        );
+        toast.success('Logro deportivo eliminado exitosamente');
+      } catch (error) {
+        console.error('Error al eliminar logro:', error);
+        toast.error('Error al eliminar logro deportivo');
+      }
+    }
   };
 
   const canSaveHistory = () => {
-    const hasDocuments = form.watch('documents.consentForm') && form.watch('documents.MedicCertificate');
     const hasSports = form.watch('sportsHistory').length > 0;
     const allSportsHaveAchievements = form.watch('sportsHistory').every(sport => 
       sport.achievements && sport.achievements.length > 0
     );
     
-    return hasDocuments && hasSports && allSportsHaveAchievements;
+    return hasSports && allSportsHaveAchievements;
   };
 
   const handleSubmit = async (data: z.infer<typeof formSchema>) => {
-    setIsSubmittingHistory(true);
-    try {
-      // Crear el historial deportivo
-      const historyResponse = await sportHistoriesService.createHistory({
-        athlete_id: 'current-athlete-id', // Obtener del contexto de autenticación
-        sport_id: data.sportsHistory[0].sport,
-        start_date: data.sportsHistory[0].startDate,
-        end_date: data.sportsHistory[0].endDate,
-        institution: data.sportsHistory[0].institution || '',
-        achievements: JSON.stringify(data.sportsHistory[0].achievements)
-      });
-
-      // Subir documentos adjuntos
-      if (data.documents.consentForm) {
-        await attachedDocumentsService.uploadDocument({
-          file: data.documents.consentForm,
-          document_type_id: '2', // Ajustar según el tipo de documento
-          reference_id: historyResponse.id,
-          reference_type: 'sport_history'
-        });
+    if (!postulationId) {
+      try {
+        const newPostulation = await postulationService.createPostulation();
+        setPostulationId(newPostulation.id);
+      } catch (error) {
+        console.error('Error al crear una nueva postulación:', error);
+        toast.error('No se pudo crear una nueva postulación. Por favor, intente nuevamente.');
+        return;
       }
+    }
 
-      if (data.documents.MedicCertificate) {
-        await attachedDocumentsService.uploadDocument({
-          file: data.documents.MedicCertificate,
-          document_type_id: '3', // Ajustar según el tipo de documento
-          reference_id: historyResponse.id,
-          reference_type: 'sport_history'
+    if (!user?.id) {
+      toast.error('No se ha encontrado el ID del usuario');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      // Procesar cada historial deportivo
+      for (let i = 0; i < data.sportsHistory.length; i++) {
+        const sportHistory = data.sportsHistory[i];
+        const sport = sports.find(s => s.id === sportHistory.sport_id);
+        
+        if (!sport) {
+          throw new Error(`Deporte no encontrado: ${sportHistory.sport_id}`);
+        }
+
+        // 1. Crear la relación postulación-deporte
+        const postulationSportResponse = await sportsService.createPostulationSport({
+          postulation_id: postulationId,
+          sport_id: sport.id
         });
+
+        if (!postulationSportResponse || !postulationSportResponse.id) {
+          throw new Error('No se pudo crear la relación postulación-deporte');
+        }
+
+        // 2. Procesar los logros usando el ID de la relación
+        for (const achievement of sportHistory.achievements) {
+          const achievementData = {
+            sport_history_id: postulationSportResponse.id,
+            achievement_type_id: achievement.achievement_type_id,
+            competition_category_id: achievement.competition_category_id,
+            competition_hierarchy_id: achievement.competition_hierarchy_id,
+            name: achievement.competitionName || '',
+            description: achievement.description,
+            date: achievement.date || '',
+            position: achievement.position || '',
+            score: achievement.score || '',
+            postulation_id: postulationId
+          };
+
+          const createdAchievement = await sportsService.createSportsAchievement(achievementData);
+
+          // 3. Si hay documentos adjuntos, los subimos
+          if (achievement.attached_document) {
+            await handleUploadFiles(createdAchievement.id, 'achievement');
+          }
+        }
       }
 
       toast.success('Historial deportivo guardado exitosamente');
     } catch (error) {
-      console.error('Error al guardar el historial:', error);
+      console.error('Error al guardar historial deportivo:', error);
       toast.error('Error al guardar el historial deportivo');
     } finally {
-      setIsSubmittingHistory(false);
+      setIsSubmitting(false);
     }
   };
 
@@ -377,6 +646,10 @@ export const SportsHistoryPage = () => {
 
   const handleUploadFiles = async (referenceId: string, referenceType: 'sport_history' | 'achievement') => {
     if (selectedFiles.length === 0) return;
+    if (!postulationId) {
+      toast.error('No se ha encontrado una postulación activa');
+      return;
+    }
 
     setLoading(true);
     try {
@@ -385,7 +658,8 @@ export const SportsHistoryPage = () => {
           file,
           document_type_id: '1', // Ajustar según el tipo de documento
           reference_id: referenceId,
-          reference_type: referenceType
+          reference_type: referenceType,
+          postulation_id: postulationId
         })
       );
 
@@ -412,6 +686,83 @@ export const SportsHistoryPage = () => {
     }
   };
 
+  useEffect(() => {
+    const fetchPostulationId = async () => {
+      try {
+        const postulation = await postulationService.getCurrentPostulation();
+        setPostulationId(postulation.id);
+      } catch (error) {
+        console.error('Error al obtener el ID de postulación:', error);
+        toast.error('Error al obtener el ID de postulación');
+      }
+    };
+
+    if (user) {
+      fetchPostulationId();
+    }
+  }, [user]);
+
+  // Efecto para verificar el rol del usuario
+  useEffect(() => {
+    const checkUserRole = async () => {
+      try {
+        const userData = await authService.checkUserRole('1');
+        setUserRole(userData);
+        setIsLoading(false);
+      } catch (error) {
+        console.error('Error al verificar el rol del usuario:', error);
+        toast.error('Error al verificar permisos de usuario');
+      }
+    };
+
+    checkUserRole();
+  }, []);
+
+  // Efecto para cargar los datos del usuario
+  useEffect(() => {
+    const loadUserData = async () => {
+      try {
+        // Usar datos de prueba
+        setUserData({
+          id: '1',
+          document_number: '123456789',
+          full_name: 'Usuario de Prueba',
+          name: 'Usuario de Prueba',
+          birth_date: '2000-01-01',
+          document_type_id: '1',
+          gender_id: '1',
+          phone: '1234567890',
+          email: 'usuario@prueba.com',
+          address: 'Calle Falsa 123',
+          city: 'Ciudad',
+          state: 'Estado',
+          country: 'País',
+          nationality: 'Nacionalidad',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        });
+        setIsLoading(false);
+      } catch (error) {
+        console.error('Error al cargar datos del usuario:', error);
+        toast.error('Error al cargar datos del usuario');
+      }
+    };
+
+    loadUserData();
+  }, []);
+
+  // Si está cargando, mostrar indicador
+  if (isLoading) {
+    return (
+      <div className="min-h-screen w-full flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="w-8 h-8 animate-spin text-[#006837]" />
+          <p className="text-gray-600">Cargando datos...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen w-full flex flex-col items-center justify-center relative">
       <img
@@ -421,6 +772,29 @@ export const SportsHistoryPage = () => {
         style={{objectPosition: 'center', opacity: 0.32}}
       />
       <div className="w-full max-w-5xl mx-auto px-4 py-10 space-y-10 relative z-10">
+        {/* Información del usuario */}
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-white rounded-2xl shadow-lg p-6 mb-6"
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="p-3 rounded-full bg-[#006837] bg-opacity-10">
+                <User size={24} className="text-[#006837]" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">{userData?.full_name || 'Usuario'}</h3>
+                <p className="text-sm text-gray-600">Documento: {userData?.document_number}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse"></div>
+              <span className="text-sm text-green-600 font-medium">Activo</span>
+            </div>
+          </div>
+        </motion.div>
+
         <motion.div 
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -437,16 +811,22 @@ export const SportsHistoryPage = () => {
               <div className="relative">
                 <div className="relative">
                   {!showSportSearch ? (
-                    <button
+                    <motion.button
                       type="button"
                       onClick={() => setShowSportSearch(true)}
-                      className="w-full px-6 py-3 bg-[#006837] text-white rounded-xl hover:bg-[#005828] transition-colors flex items-center justify-center gap-2 mb-6"
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      className="w-full px-6 py-4 bg-gradient-to-r from-[#006837] to-[#005828] text-white rounded-xl hover:shadow-lg transition-all flex items-center justify-center gap-3 font-medium text-lg"
                     >
-                      <Plus size={20} />
+                      <Plus size={24} />
                       Agregar Deporte
-                    </button>
+                    </motion.button>
                   ) : (
-                    <div className="bg-white rounded-xl border p-4 shadow-lg">
+                    <motion.div 
+                      initial={{ opacity: 0, y: -10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="bg-white rounded-xl border p-4 shadow-lg"
+                    >
                       <div className="relative mb-4">
                         <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
                         <input
@@ -454,32 +834,46 @@ export const SportsHistoryPage = () => {
                           placeholder="Buscar deporte..."
                           value={searchTerm}
                           onChange={(e) => setSearchTerm(e.target.value)}
-                          className="w-full pl-10 pr-4 py-2 border rounded-xl focus:ring-2 focus:ring-[#006837] focus:border-transparent"
+                          className="w-full pl-10 pr-4 py-3 border rounded-xl focus:ring-2 focus:ring-[#006837] focus:border-transparent"
                           autoFocus
                         />
                       </div>
                       <div className="max-h-48 overflow-y-auto">
-                        {filteredSports.map((sport) => (
-                          <button
-                            key={sport.id}
-                            type="button"
-                            onClick={() => handleSportSelect(sport)}
-                            className="w-full text-left px-4 py-2 hover:bg-gray-50 rounded-lg transition-colors flex items-center gap-2"
-                          >
-                            <Medal size={18} className="text-[#006837]" />
-                            {sport.name}
-                          </button>
-                        ))}
+                        {isLoadingSports ? (
+                          <div className="flex items-center justify-center p-4">
+                            <Loader2 className="w-6 h-6 animate-spin text-[#006837]" />
+                            <span className="ml-2">Cargando deportes...</span>
+                          </div>
+                        ) : filteredSports.length > 0 ? (
+                          filteredSports.map((sport) => (
+                            <motion.button
+                              key={sport.id}
+                              type="button"
+                              onClick={() => handleSportSelect(sport)}
+                              whileHover={{ scale: 1.02 }}
+                              whileTap={{ scale: 0.98 }}
+                              className="w-full text-left px-4 py-3 hover:bg-gray-50 rounded-lg transition-colors flex items-center gap-3"
+                            >
+                              <Medal size={20} className="text-[#006837]" />
+                              <span className="font-medium">{sport.name}</span>
+                            </motion.button>
+                          ))
+                        ) : (
+                          <div className="text-center p-4 text-gray-500">
+                            No se encontraron deportes
+                          </div>
+                        )}
                       </div>
-                    </div>
+                    </motion.div>
                   )}
                 </div>
 
                 <div className="space-y-6 mt-4">
                   {fields.map((field, sportIndex) => {
-                    const sport = form.watch(`sportsHistory.${sportIndex}.sport`);
-                    const isExpanded = expandedSports.includes(sport);
-                    const achievements = form.watch(`sportsHistory.${sportIndex}.achievements`) || [];
+                    const sport = sports.find(s => s.id === field.sport_id);
+                    const sportName = sport?.name || '';
+                    const isExpanded = expandedSports.includes(sportName);
+                    const achievements = field.achievements || [];
                     const hasAchievements = achievements.length > 0;
 
                     return (
@@ -493,7 +887,7 @@ export const SportsHistoryPage = () => {
                       >
                         <div 
                           className="flex justify-between items-center p-6 cursor-pointer"
-                          onClick={() => toggleSportExpansion(sport)}
+                          onClick={() => toggleSportExpansion(sportName)}
                         >
                           <div className="flex items-center gap-3">
                             <div className={`p-2 rounded-lg ${
@@ -502,7 +896,7 @@ export const SportsHistoryPage = () => {
                               <Trophy size={24} className={hasAchievements ? 'text-[#006837]' : 'text-yellow-600'} />
                             </div>
                             <div>
-                              <h3 className="text-xl font-semibold text-gray-900">{sport}</h3>
+                              <h3 className="text-xl font-semibold text-gray-900">{sportName || 'Deporte no encontrado'}</h3>
                               <p className="text-sm text-gray-500 flex items-center gap-2">
                                 {hasAchievements ? (
                                   <>
@@ -524,8 +918,8 @@ export const SportsHistoryPage = () => {
                               onClick={(e) => {
                                 e.stopPropagation();
                                 remove(sportIndex);
-                                setSelectedSports(selectedSports.filter(s => s !== sport));
-                                setExpandedSports(expandedSports.filter(s => s !== sport));
+                                setSelectedSports(selectedSports.filter(s => s !== sport?.id));
+                                setExpandedSports(expandedSports.filter(s => s !== sportName));
                               }}
                               className="text-red-500 hover:text-red-700 p-2 rounded-lg hover:bg-red-50 transition-colors"
                             >
@@ -710,40 +1104,14 @@ export const SportsHistoryPage = () => {
                                             </td>
                                             <td className="px-6 py-4">
                                               {isEditing ? (
-                                                <FormField
-                                                  control={form.control}
-                                                  name={`sportsHistory.${sportIndex}.achievements.${achievementIndex}.competitionCategory`}
-                                                  render={({ field }) => (
-                                                    <select {...field} className="w-full px-3 py-2 border rounded-lg">
-                                                      <option value="">Seleccionar categoría</option>
-                                                      {Object.keys(COMPETITION_TYPES).map((category) => (
-                                                        <option key={category} value={category}>
-                                                          {category}
-                                                        </option>
-                                                      ))}
-                                                    </select>
-                                                  )}
-                                                />
+                                                <AchievementCategoryAndType sportIndex={sportIndex} achievementIndex={achievementIndex} />
                                               ) : (
                                                 <span className="text-gray-600">{achievement.competitionCategory}</span>
                                               )}
                                             </td>
                                             <td className="px-6 py-4">
                                               {isEditing ? (
-                                                <FormField
-                                                  control={form.control}
-                                                  name={`sportsHistory.${sportIndex}.achievements.${achievementIndex}.competitionType`}
-                                                  render={({ field }) => (
-                                                    <select {...field} className="w-full px-3 py-2 border rounded-lg">
-                                                      <option value="">Seleccionar tipo</option>
-                                                      {COMPETITION_TYPES[achievement.competitionCategory as keyof typeof COMPETITION_TYPES]?.map((type) => (
-                                                        <option key={type} value={type}>
-                                                          {type}
-                                                        </option>
-                                                      ))}
-                                                    </select>
-                                                  )}
-                                                />
+                                                <AchievementCategoryAndType sportIndex={sportIndex} achievementIndex={achievementIndex} />
                                               ) : (
                                                 <span className="text-gray-600">{achievement.competitionType}</span>
                                               )}
@@ -752,7 +1120,7 @@ export const SportsHistoryPage = () => {
                                               {isEditing ? (
                                                 <FormField
                                                   control={form.control}
-                                                  name={`sportsHistory.${sportIndex}.achievements.${achievementIndex}.certificate`}
+                                                  name={`sportsHistory.${sportIndex}.achievements.${achievementIndex}.attached_document`}
                                                   render={({ field }) => (
                                                     <div className="flex items-center gap-2">
                                                       <Input
@@ -774,10 +1142,10 @@ export const SportsHistoryPage = () => {
                                                 />
                                               ) : (
                                                 <div className="flex items-center gap-2">
-                                                  {achievement.certificate ? (
+                                                  {achievement.attached_document ? (
                                                     <span className="flex items-center gap-1 text-sm text-gray-600">
                                                       <FileText size={16} className="text-green-600" />
-                                                      {typeof achievement.certificate === 'object' ? achievement.certificate.name : achievement.certificate}
+                                                      {typeof achievement.attached_document === 'object' ? achievement.attached_document.name : achievement.attached_document}
                                                     </span>
                                                   ) : (
                                                     <span className="text-sm text-red-500 flex items-center gap-1">
@@ -824,19 +1192,12 @@ export const SportsHistoryPage = () => {
                                                     </motion.button>
                                                     <motion.button
                                                       type="button"
-                                                      onClick={() => {
-                                                        const achievements = form.watch(`sportsHistory.${sportIndex}.achievements`);
-                                                        form.setValue(
-                                                          `sportsHistory.${sportIndex}.achievements`,
-                                                          achievements.filter((_, i) => i !== achievementIndex)
-                                                        );
-                                                        toast.success('Logro eliminado');
-                                                      }}
+                                                      onClick={() => handleCancelAchievement(sportIndex, achievementIndex)}
                                                       whileHover={{ scale: 1.1 }}
                                                       whileTap={{ scale: 0.9 }}
                                                       className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
                                                     >
-                                                      <Trash2 size={18} />
+                                                      <X size={18} />
                                                     </motion.button>
                                                   </>
                                                 )}
@@ -872,7 +1233,6 @@ export const SportsHistoryPage = () => {
                                       <X size={20} />
                                     </button>
                                   </div>
-
                                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                     <FormField
                                       control={form.control}
@@ -881,64 +1241,22 @@ export const SportsHistoryPage = () => {
                                         <FormItem>
                                           <FormLabel className="text-gray-700">Nombre de la Competencia</FormLabel>
                                           <FormControl>
-                                            <Input {...field} placeholder="Ej: Campeonato Regional" className="focus-visible:ring-[#006837]" />
+                                            <Input 
+                                              {...field} 
+                                              placeholder="Ej: Campeonato Regional" 
+                                              className="focus-visible:ring-[#006837]"
+                                              value={field.value || ''}
+                                              onChange={(e) => field.onChange(e.target.value)}
+                                            />
                                           </FormControl>
                                           <FormMessage />
                                         </FormItem>
                                       )}
                                     />
-
+                                    <AchievementCategoryAndType sportIndex={sportIndex} achievementIndex={achievementInProgress.achievementIndex} />
                                     <FormField
                                       control={form.control}
-                                      name={`sportsHistory.${sportIndex}.achievements.${achievementInProgress.achievementIndex}.competitionCategory`}
-                                      render={({ field }) => (
-                                        <FormItem>
-                                          <FormLabel className="text-gray-700">Categoría</FormLabel>
-                                          <FormControl>
-                                            <select
-                                              {...field}
-                                              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#006837] focus:border-transparent"
-                                            >
-                                              <option value="">Seleccionar categoría</option>
-                                              {Object.keys(COMPETITION_TYPES).map((category) => (
-                                                <option key={category} value={category}>
-                                                  {category}
-                                                </option>
-                                              ))}
-                                            </select>
-                                          </FormControl>
-                                          <FormMessage />
-                                        </FormItem>
-                                      )}
-                                    />
-
-                                    <FormField
-                                      control={form.control}
-                                      name={`sportsHistory.${sportIndex}.achievements.${achievementInProgress.achievementIndex}.competitionType`}
-                                      render={({ field }) => (
-                                        <FormItem>
-                                          <FormLabel className="text-gray-700">Tipo de Competencia</FormLabel>
-                                          <FormControl>
-                                            <select
-                                              {...field}
-                                              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#006837] focus:border-transparent"
-                                            >
-                                              <option value="">Seleccionar tipo</option>
-                                              {COMPETITION_TYPES[form.watch(`sportsHistory.${sportIndex}.achievements.${achievementInProgress.achievementIndex}.competitionCategory`) as keyof typeof COMPETITION_TYPES]?.map((type) => (
-                                                <option key={type} value={type}>
-                                                  {type}
-                                                </option>
-                                              ))}
-                                            </select>
-                                          </FormControl>
-                                          <FormMessage />
-                                        </FormItem>
-                                      )}
-                                    />
-
-                                    <FormField
-                                      control={form.control}
-                                      name={`sportsHistory.${sportIndex}.achievements.${achievementInProgress.achievementIndex}.certificate`}
+                                      name={`sportsHistory.${sportIndex}.achievements.${achievementInProgress.achievementIndex}.attached_document`}
                                       render={({ field }) => (
                                         <FormItem>
                                           <FormLabel className="text-gray-700">Certificado <span className="text-red-500">*</span></FormLabel>
@@ -973,7 +1291,6 @@ export const SportsHistoryPage = () => {
                                       )}
                                     />
                                   </div>
-
                                   <div className="mt-8 flex justify-end gap-3">
                                     <motion.button
                                       type="button"
@@ -1159,13 +1476,6 @@ export const SportsHistoryPage = () => {
         <div className="flex items-center justify-center p-4">
           <Loader2 className="w-6 h-6 animate-spin text-[#006837]" />
           <span className="ml-2">Cargando categorías...</span>
-        </div>
-      )}
-
-      {isLoadingCompetitionTypes && (
-        <div className="flex items-center justify-center p-4">
-          <Loader2 className="w-6 h-6 animate-spin text-[#006837]" />
-          <span className="ml-2">Cargando tipos de competencia...</span>
         </div>
       )}
 

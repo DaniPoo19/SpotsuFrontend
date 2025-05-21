@@ -1,11 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { toast } from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
 import { LoginDTO } from '../../types/dtos';
-import { DocumentTypeDTO } from '../../types/dtos';
-import { mastersService } from '../../services/masters.service';
 import icono2 from '@/assets/2.png';
 import { Eye, EyeOff } from 'lucide-react';
 
@@ -14,28 +12,13 @@ export const LoginPage = () => {
   const { login } = useAuth();
   const [formData, setFormData] = useState<LoginDTO>({
     document_number: '',
-    password: '',
-    document_type_id: ''
+    password: ''
   });
-  const [documentTypes, setDocumentTypes] = useState<DocumentTypeDTO[]>([]);
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    const loadDocumentTypes = async () => {
-      try {
-        const types = await mastersService.getDocumentTypes();
-        setDocumentTypes(types);
-      } catch (error) {
-        console.error('Error al cargar tipos de documento:', error);
-        toast.error('Error al cargar tipos de documento');
-      }
-    };
-    loadDocumentTypes();
-  }, []);
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({
       ...prev,
@@ -49,7 +32,7 @@ export const LoginPage = () => {
     setError('');
 
     try {
-      if (!formData.document_number || !formData.password || !formData.document_type_id) {
+      if (!formData.document_number || !formData.password) {
         setError('Por favor complete todos los campos');
         return;
       }
@@ -60,7 +43,9 @@ export const LoginPage = () => {
     } catch (error: any) {
       console.error('Error en login:', error);
       
-      if (error.message?.includes('no existe') || error.message?.includes('no registrado')) {
+      if (error.response?.status === 401) {
+        toast.error('Credenciales inválidas');
+      } else if (error.message?.includes('no existe') || error.message?.includes('no registrado')) {
         toast.error('Usuario no registrado. Por favor, regístrese primero.');
         navigate('/register-account');
       } else {
@@ -113,27 +98,6 @@ export const LoginPage = () => {
             className="bg-white p-8 rounded-2xl shadow-lg"
           >
             <form onSubmit={handleSubmit} className="space-y-6">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Tipo de Documento
-                </label>
-                <select
-                  name="document_type_id"
-                  value={formData.document_type_id}
-                  onChange={handleChange}
-                  className="w-full px-4 py-2 border rounded-xl focus:ring-2 focus:ring-[#006837] focus:border-transparent transition-all"
-                  required
-                  disabled={loading}
-                >
-                  <option value="">Seleccione un tipo</option>
-                  {documentTypes.map((type) => (
-                    <option key={type.id} value={type.id}>
-                      {type.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Número de Documento

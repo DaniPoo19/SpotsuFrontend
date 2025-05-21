@@ -17,6 +17,7 @@ export interface SportsAchievementDTO {
 
 export interface CreateSportsAchievementDTO {
   sport_history_id: string;
+  achievement_type_id: string;
   competition_category_id: string;
   competition_hierarchy_id: string;
   name: string;
@@ -24,6 +25,7 @@ export interface CreateSportsAchievementDTO {
   date: string;
   position: string;
   score: string;
+  postulation_id: string;
 }
 
 export const sportsAchievementsService = {

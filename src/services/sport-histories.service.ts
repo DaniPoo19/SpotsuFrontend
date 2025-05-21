@@ -20,6 +20,7 @@ export interface CreateSportHistoryDTO {
   end_date?: string;
   institution: string;
   achievements: string;
+  postulation_id: string;
 }
 
 export const sportHistoriesService = {

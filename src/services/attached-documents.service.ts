@@ -19,6 +19,7 @@ export interface CreateAttachedDocumentDTO {
   document_type_id: string;
   reference_id: string;
   reference_type: string;
+  postulation_id: string;
 }
 
 export const attachedDocumentsService = {
@@ -29,6 +30,7 @@ export const attachedDocumentsService = {
       formData.append('document_type_id', dto.document_type_id);
       formData.append('reference_id', dto.reference_id);
       formData.append('reference_type', dto.reference_type);
+      formData.append('postulation_id', dto.postulation_id);
 
       const response = await api.post(API_ENDPOINTS.ATTACHED_DOCUMENTS.BASE, formData, {
         headers: {

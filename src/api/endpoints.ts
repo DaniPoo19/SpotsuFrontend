@@ -45,9 +45,9 @@ const API_ENDPOINTS = {
   },
   // Competition Hierarchy
   COMPETITION_HIERARCHY: {
-    BASE: '/competition-hierarchy',
-    BY_ID: (id: string) => `/competition-hierarchy/${id}`,
-    BY_CATEGORY: (categoryId: string) => `/competition-hierarchy/category/${categoryId}`,
+    BASE: '/sports-competition-hierarchy',
+    BY_ID: (id: string) => `/sports-competition-hierarchy/${id}`,
+    BY_CATEGORY: (categoryId: string) => `/sports-competition-hierarchy/by-category/${categoryId}`,
   },
   // Attached Documents
   ATTACHED_DOCUMENTS: {
@@ -66,6 +66,12 @@ const API_ENDPOINTS = {
   PARQ: {
     QUESTIONS: '/par-q',
     RESPONSES: '/par-qresponses',
+  },
+  // Postulations
+  POSTULATIONS: {
+    BASE: '/postulations',
+    CURRENT: '/postulations/current',
+    BY_ID: (id: string) => `/postulations/${id}`,
   },
 };
 

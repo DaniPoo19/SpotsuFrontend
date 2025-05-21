@@ -3,9 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { toast } from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
-import { RegisterDTO } from '../../types/dtos';
+import { RegisterDTO, CreatePersonDTO } from '../../types/dtos';
 import { DocumentTypeDTO } from '../../types/dtos';
 import { mastersService } from '../../services/masters.service';
+import { api } from '../../lib/axios';
 import icono2 from '@/assets/2.png';
 import { Eye, EyeOff } from 'lucide-react';
 
@@ -91,7 +92,28 @@ export const RegisterAccountPage = () => {
     }
 
     try {
+      // Primero registramos la persona
+      const personData: CreatePersonDTO = {
+        document_number: formData.document_number,
+        document_type_id: formData.document_type_id,
+        name: '', // Estos campos se actualizarán después
+        full_name: '',
+        birth_date: '',
+        gender_id: '',
+        address: '',
+        city: '',
+        department: '',
+        country: '',
+        email: '',
+        phone: '',
+        family_phone: ''
+      };
+
+      const personResponse = await api.post('/people', personData);
+      
+      // Luego registramos el usuario
       await register(formData);
+      
       toast.success('¡Cuenta creada exitosamente!');
       navigate('/login');
     } catch (error: any) {

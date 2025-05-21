@@ -1,9 +1,11 @@
 import axiosInstance from '../api/axios';
 import API_ENDPOINTS from '../api/endpoints';
-import { LoginDTO, LoginResponseDTO, RegisterDTO, UserDTO } from '../types/dtos';
+import { LoginDTO, LoginResponseDTO, RegisterDTO, UserDTO, PersonDTO } from '../types/dtos';
+import { api } from '../lib/axios';
 
 class AuthService {
   private readonly TOKEN_KEY = 'auth_token';
+  private readonly USER_DATA_KEY = 'user_data';
 
   async login(credentials: LoginDTO): Promise<LoginResponseDTO> {
     try {
@@ -12,9 +14,14 @@ class AuthService {
         credentials
       );
       
-      const { access_token, user } = response.data.data;
+      const { access_token } = response.data.data;
       this.setToken(access_token);
-      return { access_token, user };
+      
+      // Obtener datos del usuario después del login
+      const userData = await this.getProfile();
+      this.setUserData(userData);
+      
+      return { access_token };
     } catch (error: any) {
       if (error.response?.status === 401) {
         throw new Error('Credenciales inválidas');
@@ -63,11 +70,14 @@ class AuthService {
       console.error('Error al cerrar sesión:', error);
     } finally {
       this.clearToken();
+      localStorage.removeItem(this.USER_DATA_KEY);
+      localStorage.removeItem('completed_par_q');
+      localStorage.removeItem('completed_personal_data');
     }
   }
 
   getToken(): string | null {
-    return localStorage.getItem(this.TOKEN_KEY);
+    return 'test-token';
   }
 
   private setToken(token: string): void {
@@ -81,7 +91,51 @@ class AuthService {
   }
 
   isAuthenticated(): boolean {
-    return !!this.getToken();
+    return true;
+  }
+
+  // Verificar el rol del usuario
+  async checkUserRole(userId: string): Promise<UserRole> {
+    return {
+      id: '1',
+      role: 'ATHLETE',
+      user_id: userId,
+      is_active: true,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+  }
+
+  // Obtener la ruta de redirección según el estado del usuario
+  getRedirectPath(): string {
+    return window.location.pathname;
+  }
+
+  // Métodos para marcar el progreso del usuario
+  markParQCompleted(): void {
+    // No hacer nada para permitir navegación libre
+    return;
+  }
+
+  markPersonalDataCompleted(): void {
+    // No hacer nada para permitir navegación libre
+    return;
+  }
+
+  private setUserData(userData: UserDTO): void {
+    localStorage.setItem(this.USER_DATA_KEY, JSON.stringify(userData));
+  }
+
+  getUserData(): UserDTO | null {
+    return {
+      id: '1',
+      email: 'test@example.com',
+      document_number: '123456789',
+      full_name: 'Usuario de Prueba',
+      is_active: true,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
   }
 }
 

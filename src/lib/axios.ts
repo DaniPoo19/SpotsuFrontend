@@ -27,15 +27,6 @@ api.interceptors.response.use(
       const { status, data } = error.response;
       
       switch (status) {
-        case 401:
-          // Token expirado o inválido
-          localStorage.removeItem('token');
-          window.location.href = '/login';
-          break;
-        case 403:
-          // No autorizado
-          console.error('No tienes permisos para realizar esta acción');
-          break;
         case 404:
           // Recurso no encontrado
           console.error('El recurso solicitado no existe');

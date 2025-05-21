@@ -20,21 +20,23 @@ const axiosInstance = axios.create({
 // Interceptor para logs de peticiones
 axiosInstance.interceptors.request.use(
   (config) => {
-    // Asegurar que la URL comience con el prefijo correcto
     if (!config.url?.startsWith(API_CONFIG.API_PREFIX)) {
       config.url = `${API_CONFIG.API_PREFIX}${config.url}`;
     }
-    
-    // Log detallado para depuración
-    const url = `${config.baseURL}${config.url}`;
-    console.log(`[API Request] ${config.method?.toUpperCase()} ${url}`);
-    
-    // Verificar si hay token JWT y añadirlo a las cabeceras
-    const token = localStorage.getItem('token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+
+    // No añadir token para login o registro
+    if (
+      !config.url.includes('/auth/login') &&
+      !config.url.includes('/auth/register')
+    ) {
+      const token = localStorage.getItem('token');
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
     }
-    
+
+    console.log(`[API Request] ${config.method?.toUpperCase()} ${config.baseURL}${config.url}`);
+
     return config;
   },
   (error) => {
@@ -42,6 +44,7 @@ axiosInstance.interceptors.request.use(
     return Promise.reject(error);
   }
 );
+
 
 // Interceptor para manejar respuestas y errores
 axiosInstance.interceptors.response.use(
