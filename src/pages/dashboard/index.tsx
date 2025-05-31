@@ -1,12 +1,16 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Users, Trophy, Calendar, FileText, 
   ChevronDown, LogOut, User, Settings,
-  BarChart2, Activity, Award, BookOpen
+  BarChart2, Activity, Award, BookOpen,
+  Loader2, Search, Medal
 } from 'lucide-react';
 import { DashboardStats } from './components/DashboardStats';
 import { DisciplineChart } from './components/DisciplineChart';
+import { useNavigate } from 'react-router-dom';
+import { api } from '../../lib/axios';
+import { toast } from 'sonner';
 
 // Datos simulados para las métricas
 const mockData = {
@@ -25,8 +29,102 @@ const mockData = {
   ]
 };
 
+interface Postulation {
+  id: string;
+  athlete: {
+    id: string;
+    person: {
+      full_name: string;
+      document_number: string;
+    };
+  };
+  status: string;
+  postulation_sports: {
+    id: string;
+    sport: {
+      id: string;
+      name: string;
+    };
+  }[];
+  created_at: string;
+  semester: {
+    id: string;
+    name: string;
+  };
+}
+
 export const DashboardPage = () => {
+  const navigate = useNavigate();
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [postulations, setPostulations] = useState<Postulation[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+
+  useEffect(() => {
+    const loadPostulations = async () => {
+      try {
+        // Obtener el semestre actual (esto debería venir de un contexto o estado global)
+        const currentSemesterId = '1'; // Esto debería ser dinámico
+        const response = await api.get(`/postulations/semester/${currentSemesterId}`);
+        console.log('Respuesta de postulaciones:', response.data);
+        if (response.data && response.data.data) {
+          setPostulations(response.data.data);
+        }
+      } catch (error) {
+        console.error('Error al cargar postulaciones:', error);
+        toast.error('Error al cargar la lista de aspirantes');
+        setPostulations([]);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadPostulations();
+  }, []);
+
+  const filteredPostulations = postulations.filter(postulation =>
+    postulation.athlete.person.full_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    postulation.athlete.person.document_number.includes(searchTerm)
+  );
+
+  const getStatusColor = (status: string) => {
+    const statusLower = status.toLowerCase();
+    switch (statusLower) {
+      case 'aprobado':
+        return 'bg-green-100 text-green-800';
+      case 'rechazado':
+        return 'bg-red-100 text-red-800';
+      case 'pendiente':
+        return 'bg-yellow-100 text-yellow-800';
+      case 'en revisión':
+        return 'bg-blue-100 text-blue-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const formatDate = (dateString: string) => {
+    try {
+      return new Date(dateString).toLocaleDateString('es-ES', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      });
+    } catch (error) {
+      return 'Fecha no disponible';
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="w-8 h-8 animate-spin text-[#006837]" />
+          <p className="text-gray-600">Cargando aspirantes...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -279,6 +377,95 @@ export const DashboardPage = () => {
           >
             <p>© {new Date().getFullYear()} Universidad de Córdoba. Todos los derechos reservados.</p>
           </motion.div>
+
+          {/* Lista de Aspirantes */}
+          <div className="mt-8 bg-white p-6 rounded-xl shadow-sm">
+            <h3 className="text-lg font-semibold mb-4">Lista de Aspirantes</h3>
+            <div className="relative mb-6">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+              <input
+                type="text"
+                placeholder="Buscar por nombre o documento..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-10 pr-4 py-3 border rounded-xl focus:ring-2 focus:ring-[#006837] focus:border-transparent"
+              />
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="bg-gray-50 border-b">
+                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-600">Aspirante</th>
+                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-600">Deportes</th>
+                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-600">Estado</th>
+                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-600">Semestre</th>
+                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-600">Fecha de Registro</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredPostulations.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="px-6 py-4 text-center text-gray-500">
+                        No se encontraron aspirantes
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredPostulations.map((postulation) => (
+                      <motion.tr
+                        key={postulation.id}
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="border-b hover:bg-gray-50 cursor-pointer"
+                        onClick={() => navigate(`/postulation/${postulation.id}`)}
+                      >
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            <div className="p-2 rounded-full bg-[#006837] bg-opacity-10">
+                              <User size={20} className="text-[#006837]" />
+                            </div>
+                            <div>
+                              <p className="font-medium text-gray-900">{postulation.athlete.person.full_name}</p>
+                              <p className="text-sm text-gray-500">Doc: {postulation.athlete.person.document_number}</p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex flex-wrap gap-2">
+                            {postulation.postulation_sports.length === 0 ? (
+                              <span className="text-sm text-gray-500">Sin deportes registrados</span>
+                            ) : (
+                              postulation.postulation_sports.map((sport) => (
+                                <span
+                                  key={sport.id}
+                                  className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-[#006837] bg-opacity-10 text-[#006837]"
+                                >
+                                  <Medal size={16} className="mr-1" />
+                                  {sport.sport.name}
+                                </span>
+                              ))
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm ${getStatusColor(postulation.status)}`}>
+                            <Award size={16} className="mr-1" />
+                            {postulation.status}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-500">
+                          {postulation.semester?.name || 'No especificado'}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-500">
+                          {formatDate(postulation.created_at)}
+                        </td>
+                      </motion.tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </motion.div>
       </div>
     </div>

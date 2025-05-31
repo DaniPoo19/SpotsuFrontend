@@ -3,20 +3,30 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { toast } from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
-import { RegisterDTO, CreatePersonDTO } from '../../types/dtos';
 import { DocumentTypeDTO } from '../../types/dtos';
 import { mastersService } from '../../services/masters.service';
-import { api } from '../../lib/axios';
+import axiosInstance from '../../api/axios';
 import icono2 from '@/assets/2.png';
 import { Eye, EyeOff } from 'lucide-react';
+
+interface RegisterDTO {
+  name: string;
+  lastname: string;
+  document_number: string;
+  password: string;
+  role_id: string;
+  document_type_id: string;
+}
 
 export const RegisterAccountPage = () => {
   const navigate = useNavigate();
   const { register } = useAuth();
   const [formData, setFormData] = useState<RegisterDTO>({
+    name: '',
+    lastname: '',
     document_number: '',
     password: '',
-    role_id: '2', // ID del rol "usuario"
+    role_id: '',
     document_type_id: ''
   });
   const [documentTypes, setDocumentTypes] = useState<DocumentTypeDTO[]>([]);
@@ -26,19 +36,49 @@ export const RegisterAccountPage = () => {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    const loadDocumentTypes = async () => {
+    const loadInitialData = async () => {
       try {
+        // Cargar tipos de documento
         const types = await mastersService.getDocumentTypes();
         setDocumentTypes(types);
-      } catch (error) {
-        console.error('Error al cargar tipos de documento:', error);
-        toast.error('Error al cargar tipos de documento');
+
+        // Obtener el rol de ATHLETE
+        const rolesResponse = await axiosInstance.get('/auth/roles');
+        if (rolesResponse.data?.data) {
+          const athleteRole = rolesResponse.data.data.find((role: any) => 
+            role.name.toUpperCase() === 'ATHLETE'
+          );
+          if (athleteRole) {
+            setFormData(prev => ({ ...prev, role_id: athleteRole.id }));
+          } else {
+            toast.error('No se pudo encontrar el rol de atleta. Por favor, contacte al administrador.');
+          }
+        }
+      } catch (error: any) {
+        console.error('Error al cargar datos iniciales:', error);
+        if (error.response?.status === 404) {
+          toast.error('El servicio no está disponible');
+        } else if (error.code === 'ERR_NETWORK') {
+          toast.error('No se pudo conectar con el servidor. Por favor, verifique que el servidor esté en ejecución.');
+        } else {
+          toast.error('Error al cargar datos iniciales');
+        }
       }
     };
-    loadDocumentTypes();
+    loadInitialData();
   }, []);
 
   const validateForm = () => {
+    if (!formData.name.trim()) {
+      setError('Por favor ingrese su nombre');
+      return false;
+    }
+
+    if (!formData.lastname.trim()) {
+      setError('Por favor ingrese su apellido');
+      return false;
+    }
+
     if (!formData.document_type_id) {
       setError('Por favor seleccione un tipo de documento');
       return false;
@@ -51,6 +91,11 @@ export const RegisterAccountPage = () => {
 
     if (!/^\d+$/.test(formData.document_number)) {
       setError('El número de documento debe contener solo números');
+      return false;
+    }
+
+    if (!formData.role_id) {
+      setError('No se pudo asignar el rol de atleta. Por favor, intente más tarde.');
       return false;
     }
 
@@ -92,38 +137,37 @@ export const RegisterAccountPage = () => {
     }
 
     try {
-      // Primero registramos la persona
-      const personData: CreatePersonDTO = {
+      // Crear la persona y el usuario en una sola llamada
+      const response = await axiosInstance.post('/people', {
+        name: formData.name,
+        lastname: formData.lastname,
         document_number: formData.document_number,
         document_type_id: formData.document_type_id,
-        name: '', // Estos campos se actualizarán después
-        full_name: '',
-        birth_date: '',
-        gender_id: '',
-        address: '',
-        city: '',
-        department: '',
-        country: '',
-        email: '',
-        phone: '',
-        family_phone: ''
-      };
+        password: formData.password,
+        role_id: formData.role_id
+      });
 
-      const personResponse = await api.post('/people', personData);
-      
-      // Luego registramos el usuario
-      await register(formData);
-      
-      toast.success('¡Cuenta creada exitosamente!');
-      navigate('/login');
+      if (response.data) {
+        toast.success('¡Cuenta creada exitosamente!');
+        navigate('/login');
+      }
     } catch (error: any) {
       console.error('Error en registro:', error);
       
-      if (error.message?.includes('ya existe') || error.message?.includes('ya registrado')) {
+      if (error.code === 'ERR_NETWORK') {
+        toast.error('No se pudo conectar con el servidor. Por favor, verifique que el servidor esté en ejecución.');
+      } else if (error.response?.status === 404) {
+        toast.error('El servicio de registro no está disponible. Por favor, intente más tarde.');
+      } else if (error.response?.data?.message?.includes('ya existe') || 
+                error.response?.data?.message?.includes('ya registrado')) {
         toast.error('Esta cédula ya está registrada. Por favor, inicie sesión.');
         navigate('/login');
+      } else if (error.response?.data?.message?.includes('tipo de documento')) {
+        toast.error('El tipo de documento seleccionado no es válido');
+      } else if (error.response?.data?.message?.includes('rol')) {
+        toast.error('El rol seleccionado no es válido');
       } else {
-        setError(error.message || 'Error al registrar usuario');
+        setError(error.response?.data?.message || 'Error al registrar usuario');
       }
     } finally {
       setLoading(false);
@@ -172,6 +216,38 @@ export const RegisterAccountPage = () => {
             className="bg-white p-8 rounded-2xl shadow-lg"
           >
             <form onSubmit={handleSubmit} className="space-y-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Nombre
+                </label>
+                <input
+                  type="text"
+                  name="name"
+                  value={formData.name}
+                  onChange={handleChange}
+                  className="w-full px-4 py-2 border rounded-xl focus:ring-2 focus:ring-[#006837] focus:border-transparent transition-all"
+                  placeholder="Ingrese su nombre"
+                  required
+                  disabled={loading}
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Apellido
+                </label>
+                <input
+                  type="text"
+                  name="lastname"
+                  value={formData.lastname}
+                  onChange={handleChange}
+                  className="w-full px-4 py-2 border rounded-xl focus:ring-2 focus:ring-[#006837] focus:border-transparent transition-all"
+                  placeholder="Ingrese su apellido"
+                  required
+                  disabled={loading}
+                />
+              </div>
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Tipo de Documento

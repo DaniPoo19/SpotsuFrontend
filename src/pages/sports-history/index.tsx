@@ -26,16 +26,15 @@ import { attachedDocumentsService } from '../../services/attached-documents.serv
 import { sportHistoriesService } from '../../services/sport-histories.service';
 import { sportsAchievementsService } from '../../services/sports-achievements.service';
 import { 
-  SportDTO, 
-  SportsCompetitionCategoryDTO, 
-  CompetitionHierarchyDTO,
-  AttachedDocumentDTO,
-  SportsAchievementDTO,
-  CreateSportsAchievementDTO,
-  SportHistoryDTO,
-  CreateSportHistoryDTO,
-  UserRole,
-  PersonDTO
+  Sport, 
+  CompetitionCategory, 
+  CompetitionHierarchy, 
+  CreateAttachedDocumentDTO, 
+  PersonDTO, 
+  Achievement, 
+  SportHistory, 
+  FormValues, 
+  UserRole
 } from '../../types/dtos';
 import { Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
@@ -49,80 +48,7 @@ const sports = [
   'Karate', 'Taekwondo', 'Judo', 'Rugby', 'Ajedrez'
 ];
 
-// Tipos de datos
-interface Sport {
-  id: string;
-  name: string;
-  is_active: boolean;
-}
-
-interface CompetitionCategory {
-  id: string;
-  name: string;
-  is_active: boolean;
-}
-
-interface CompetitionHierarchy {
-  id: string;
-  name: string;
-  category_id: string;
-  description?: string;
-}
-
-interface AttachedDocumentType {
-  id: string;
-  name: string;
-}
-
-interface PostulationSport {
-  id: string;
-  postulation_id: string;
-  sport_id: string;
-}
-
-interface SportsAchievement {
-  id: string;
-  postulation_sport_id: string;
-  achievement_type_id: string;
-  competition_category_id: string;
-  competition_hierarchy_id: string;
-  achievement_date: string;
-  description: string;
-}
-
-interface Achievement {
-  id?: string;
-  achievement_type_id: string;
-  competition_category_id: string;
-  competition_hierarchy_id: string;
-  achievement_date: string;
-  description: string;
-  attached_document?: File;
-  attached_document_type_id?: string;
-  competitionCategory?: string;
-  competitionType?: string;
-  competitionName?: string;
-  date?: string;
-  position?: string;
-  score?: string;
-}
-
-interface SportHistory {
-  sport_id: string;
-  achievements: Achievement[];
-  sport?: Sport;
-  startDate?: string;
-  endDate?: string;
-  institution?: string;
-}
-
-interface FormData {
-  sportsHistory: SportHistory[];
-  documents?: {
-    consentForm?: File;
-    MedicCertificate?: File;
-  };
-}
+const today = new Date();
 
 // Esquemas de validación
 const achievementSchema = z.object({
@@ -159,8 +85,6 @@ const formSchema = z.object({
   }).optional()
 });
 
-const today = new Date();
-
 export const SportsHistoryPage = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -185,8 +109,9 @@ export const SportsHistoryPage = () => {
   const [isLoadingCategories, setIsLoadingCategories] = useState(false);
   const [isSubmittingAchievement, setIsSubmittingAchievement] = useState(false);
   const [isSubmittingHistory, setIsSubmittingHistory] = useState(false);
+  const [competitionTypes, setCompetitionTypes] = useState<CompetitionHierarchy[]>([]);
 
-  const form = useForm<FormData>({
+  const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       sportsHistory: []
@@ -225,12 +150,12 @@ export const SportsHistoryPage = () => {
     if (searchTerm.trim() === '') {
       setFilteredSports(sports.filter(sport => !selectedSports.includes(sport.id)));
     } else {
-      const filtered = sports.filter(
+    const filtered = sports.filter(
         sport => 
           sport.name.toLowerCase().includes(searchTerm.toLowerCase()) &&
-          !selectedSports.includes(sport.id)
-      );
-      setFilteredSports(filtered);
+      !selectedSports.includes(sport.id)
+    );
+    setFilteredSports(filtered);
     }
   }, [searchTerm, selectedSports, sports]);
 
@@ -299,7 +224,13 @@ export const SportsHistoryPage = () => {
 
     // Actualizar los valores del formulario
     form.setValue(`sportsHistory.${sportIndex}.achievements.${achievementIndex}.competition_hierarchy_id`, typeId);
-    form.setValue(`sportsHistory.${sportIndex}.achievements.${achievementIndex}.competitionType`, sports.find(s => s.id === typeId)?.name || '');
+    const selectedType = competitionTypes.find(type => type.id === typeId);
+    if (selectedType) {
+      form.setValue(
+        `sportsHistory.${sportIndex}.achievements.${achievementIndex}.competitionType`,
+        selectedType.competition_hierarchy?.name || selectedType.name
+      );
+    }
   };
 
   // Componente para el selector de categoría
@@ -445,46 +376,80 @@ export const SportsHistoryPage = () => {
 
     setIsSubmittingAchievement(true);
     try {
-      // 1. Primero creamos la relación postulación-deporte
-      const postulationSportResponse = await sportsService.createPostulationSport({
+      // 1. Crear la postulación deportiva
+      const postulationSportResponse = await api.post('/postulation-sports', {
         postulation_id: postulationId,
-        sport_id: sportHistory.sport_id
+        sport_id: sportHistory.sport_id,
+        start_date: sportHistory.startDate,
+        end_date: sportHistory.endDate,
+        institution: sportHistory.institution
       });
 
-      if (!postulationSportResponse || !postulationSportResponse.id) {
-        throw new Error('No se pudo crear la relación postulación-deporte');
+      if (!postulationSportResponse.data.data || !postulationSportResponse.data.data.id) {
+        throw new Error('No se pudo crear la postulación deportiva');
       }
 
-      // 2. Luego creamos el logro deportivo usando el ID de la relación
-      const achievementData = {
-        sport_history_id: postulationSportResponse.id,
-        achievement_type_id: achievement.achievement_type_id,
-        competition_category_id: achievement.competition_category_id,
-        competition_hierarchy_id: achievement.competition_hierarchy_id,
-        name: achievement.competitionName || '',
-        description: achievement.description,
-        date: achievement.achievement_date,
-        position: achievement.position || '',
-        score: achievement.score || '',
-        postulation_id: postulationId
+      const postulationSportId = postulationSportResponse.data.data.id;
+
+      // 2. Crear el logro deportivo con el certificado
+      const formDataObj = new FormData();
+      formDataObj.append('postulation_sport_id', postulationSportId);
+      formDataObj.append('achievement_type_id', achievement.achievement_type_id);
+      formDataObj.append('competition_category_id', achievement.competition_category_id);
+      formDataObj.append('competition_hierarchy_id', achievement.competition_hierarchy_id);
+      formDataObj.append('name', achievement.competitionName || '');
+      formDataObj.append('description', achievement.description);
+      formDataObj.append('date', achievement.achievement_date);
+      formDataObj.append('position', achievement.position || '');
+      formDataObj.append('score', achievement.score || '');
+      formDataObj.append('postulation_id', postulationId);
+
+      // Agregar el certificado si existe
+      if (achievement.attached_document) {
+        formDataObj.append('file', achievement.attached_document);
+      }
+
+      const achievementResponse = await api.post('/postulation-sport-achievements', formDataObj, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+
+      if (!achievementResponse.data.data) {
+        throw new Error('No se pudo crear el logro deportivo');
+      }
+
+      // Obtener la categoría y tipo de competencia
+      const category = categories.find(cat => cat.id === achievement.competition_category_id);
+      const competitionType = competitionTypes.find(type => type.id === achievement.competition_hierarchy_id);
+
+      // Actualizar el estado del formulario con el logro guardado
+      const currentAchievements = form.getValues(`sportsHistory.${sportIndex}.achievements`);
+      const updatedAchievement = {
+        ...achievement,
+        id: achievementResponse.data.data.id,
+        competitionCategory: category?.name || '',
+        competitionType: competitionType?.name || ''
       };
+      
+      currentAchievements[achievementIndex] = updatedAchievement;
+      form.setValue(`sportsHistory.${sportIndex}.achievements`, currentAchievements);
 
-      const createdAchievement = await sportsService.createSportsAchievement(achievementData);
+      // Mostrar mensaje de éxito
+      toast.success('Logro deportivo registrado exitosamente');
 
-      // 3. Si hay documentos adjuntos, los subimos
-      if (achievement.attached_document && achievement.attached_document_type_id) {
-        await sportsService.uploadAttachedDocument({
-          sports_achievement_id: createdAchievement.id,
-          attached_document_type_id: achievement.attached_document_type_id,
-          file: achievement.attached_document
-        });
+      // Solo cerrar el formulario de nuevo logro, manteniendo la card expandida
+      setAchievementInProgress(null);
+
+      // Asegurarse de que la card permanezca expandida
+      const sport = sports.find(s => s.id === sportHistory.sport_id);
+      if (sport && !expandedSports.includes(sport.name)) {
+        setExpandedSports(prev => [...prev, sport.name]);
       }
 
-      toast.success('Logro deportivo registrado exitosamente');
-      setAchievementInProgress(null);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error al registrar logro deportivo:', error);
-      toast.error('Error al registrar logro deportivo. Por favor, intente nuevamente.');
+      toast.error(error.response?.data?.message || 'Error al registrar logro deportivo');
     } finally {
       setIsSubmittingAchievement(false);
     }
@@ -653,15 +618,17 @@ export const SportsHistoryPage = () => {
 
     setLoading(true);
     try {
-      const uploadPromises = selectedFiles.map(file => 
-        attachedDocumentsService.uploadDocument({
+      const uploadPromises = selectedFiles.map(file => {
+        const documentData: CreateAttachedDocumentDTO = {
           file,
-          document_type_id: '1', // Ajustar según el tipo de documento
+          document_type_id: '1',
+          attached_document_type_id: '1',
           reference_id: referenceId,
           reference_type: referenceType,
           postulation_id: postulationId
-        })
-      );
+        };
+        return attachedDocumentsService.uploadDocument(documentData);
+      });
 
       const uploadedDocs = await Promise.all(uploadPromises);
       setUploadedDocuments(prev => [...prev, ...uploadedDocs]);
@@ -702,53 +669,80 @@ export const SportsHistoryPage = () => {
     }
   }, [user]);
 
-  // Efecto para verificar el rol del usuario
-  useEffect(() => {
-    const checkUserRole = async () => {
-      try {
-        const userData = await authService.checkUserRole('1');
-        setUserRole(userData);
-        setIsLoading(false);
-      } catch (error) {
-        console.error('Error al verificar el rol del usuario:', error);
-        toast.error('Error al verificar permisos de usuario');
-      }
-    };
-
-    checkUserRole();
-  }, []);
-
-  // Efecto para cargar los datos del usuario
+  // Actualizar el efecto para cargar los datos del usuario
   useEffect(() => {
     const loadUserData = async () => {
       try {
-        // Usar datos de prueba
+        setIsLoading(true);
+        // Obtener el token del localStorage
+        const token = localStorage.getItem('token');
+        if (!token) {
+          throw new Error('No hay token de autenticación');
+        }
+
+        // Configurar el token en las cabeceras de axios
+        api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+
+        // Obtener los datos del usuario autenticado
+        const response = await api.get('/auth/me');
+        const userData = response.data.data;
+
+        // Obtener los datos de la persona asociada al usuario
+        const personResponse = await api.get(`/people/${userData.person.id}`);
+        const personData = personResponse.data.data;
+
         setUserData({
-          id: '1',
-          document_number: '123456789',
-          full_name: 'Usuario de Prueba',
-          name: 'Usuario de Prueba',
-          birth_date: '2000-01-01',
-          document_type_id: '1',
-          gender_id: '1',
-          phone: '1234567890',
-          email: 'usuario@prueba.com',
-          address: 'Calle Falsa 123',
-          city: 'Ciudad',
-          state: 'Estado',
-          country: 'País',
-          nationality: 'Nacionalidad',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
+          id: personData.id,
+          document_number: personData.document_number,
+          full_name: `${personData.name} ${personData.lastname}`,
+          name: personData.name,
+          birth_date: personData.birth_date,
+          document_type_id: personData.document_type_id,
+          gender_id: personData.gender_id,
+          phone: personData.phone,
+          email: personData.email,
+          address: personData.address,
+          city: personData.city,
+          state: personData.state,
+          country: personData.country,
+          nationality: personData.nationality,
+          created_at: personData.created_at,
+          updated_at: personData.updated_at
         });
+
+        // Obtener el rol del usuario
+        const roleResponse = await api.get(`/auth/roles/${userData.role.id}`);
+        setUserRole(roleResponse.data.data);
+
         setIsLoading(false);
       } catch (error) {
         console.error('Error al cargar datos del usuario:', error);
         toast.error('Error al cargar datos del usuario');
+        setIsLoading(false);
       }
     };
 
     loadUserData();
+  }, []);
+
+  // Agregar este useEffect para cargar las categorías al inicio
+  useEffect(() => {
+    const loadCategories = async () => {
+      try {
+        setIsLoadingCategories(true);
+        const response = await api.get('/sports-competition-categories');
+        if (response.data && response.data.data) {
+          setCategories(response.data.data);
+        }
+      } catch (error) {
+        console.error('Error al cargar categorías:', error);
+        toast.error('Error al cargar categorías');
+      } finally {
+        setIsLoadingCategories(false);
+      }
+    };
+
+    loadCategories();
   }, []);
 
   // Si está cargando, mostrar indicador
@@ -846,17 +840,17 @@ export const SportsHistoryPage = () => {
                           </div>
                         ) : filteredSports.length > 0 ? (
                           filteredSports.map((sport) => (
-                            <motion.button
-                              key={sport.id}
-                              type="button"
-                              onClick={() => handleSportSelect(sport)}
-                              whileHover={{ scale: 1.02 }}
-                              whileTap={{ scale: 0.98 }}
-                              className="w-full text-left px-4 py-3 hover:bg-gray-50 rounded-lg transition-colors flex items-center gap-3"
-                            >
-                              <Medal size={20} className="text-[#006837]" />
-                              <span className="font-medium">{sport.name}</span>
-                            </motion.button>
+                          <motion.button
+                            key={sport.id}
+                            type="button"
+                            onClick={() => handleSportSelect(sport)}
+                            whileHover={{ scale: 1.02 }}
+                            whileTap={{ scale: 0.98 }}
+                            className="w-full text-left px-4 py-3 hover:bg-gray-50 rounded-lg transition-colors flex items-center gap-3"
+                          >
+                            <Medal size={20} className="text-[#006837]" />
+                            <span className="font-medium">{sport.name}</span>
+                          </motion.button>
                           ))
                         ) : (
                           <div className="text-center p-4 text-gray-500">
@@ -1080,6 +1074,8 @@ export const SportsHistoryPage = () => {
                                       {achievements.map((achievement, achievementIndex) => {
                                         const isEditing = editingAchievement?.sportIndex === sportIndex && 
                                                         editingAchievement?.achievementIndex === achievementIndex;
+                                        const category = categories.find(cat => cat.id === achievement.competition_category_id);
+                                        const competitionType = competitionTypes.find(type => type.id === achievement.competition_hierarchy_id);
 
                                         return (
                                           <motion.tr 
@@ -1090,117 +1086,49 @@ export const SportsHistoryPage = () => {
                                             className="border-b last:border-b-0 hover:bg-gray-50"
                                           >
                                             <td className="px-6 py-4">
-                                              {isEditing ? (
-                                                <FormField
-                                                  control={form.control}
-                                                  name={`sportsHistory.${sportIndex}.achievements.${achievementIndex}.competitionName`}
-                                                  render={({ field }) => (
-                                                    <Input {...field} className="w-full" />
-                                                  )}
-                                                />
-                                              ) : (
-                                                <span className="font-medium text-gray-900">{achievement.competitionName}</span>
-                                              )}
+                                              <span className="font-medium text-gray-900">{achievement.competitionName}</span>
                                             </td>
                                             <td className="px-6 py-4">
-                                              {isEditing ? (
-                                                <AchievementCategoryAndType sportIndex={sportIndex} achievementIndex={achievementIndex} />
-                                              ) : (
-                                                <span className="text-gray-600">{achievement.competitionCategory}</span>
-                                              )}
+                                              <span className="text-gray-600">{category?.name || achievement.competitionCategory}</span>
                                             </td>
                                             <td className="px-6 py-4">
-                                              {isEditing ? (
-                                                <AchievementCategoryAndType sportIndex={sportIndex} achievementIndex={achievementIndex} />
-                                              ) : (
-                                                <span className="text-gray-600">{achievement.competitionType}</span>
-                                              )}
-                                            </td>
-                                            <td className="px-6 py-4">
-                                              {isEditing ? (
-                                                <FormField
-                                                  control={form.control}
-                                                  name={`sportsHistory.${sportIndex}.achievements.${achievementIndex}.attached_document`}
-                                                  render={({ field }) => (
-                                                    <div className="flex items-center gap-2">
-                                                      <Input
-                                                        type="file"
-                                                        onChange={(e) => field.onChange(e.target.files?.[0])}
-                                                        accept=".pdf,.jpg,.jpeg,.png"
-                                                        className="hidden"
-                                                        id={`certificate-${sportIndex}-${achievementIndex}`}
-                                                      />
-                                                      <label
-                                                        htmlFor={`certificate-${sportIndex}-${achievementIndex}`}
-                                                        className="flex items-center gap-2 px-3 py-1.5 border rounded-lg cursor-pointer hover:bg-gray-50"
-                                                      >
-                                                        <Upload size={16} className="text-[#006837]" />
-                                                        Cambiar
-                                                      </label>
-                                                    </div>
-                                                  )}
-                                                />
-                                              ) : (
-                                                <div className="flex items-center gap-2">
-                                                  {achievement.attached_document ? (
-                                                    <span className="flex items-center gap-1 text-sm text-gray-600">
-                                                      <FileText size={16} className="text-green-600" />
-                                                      {typeof achievement.attached_document === 'object' ? achievement.attached_document.name : achievement.attached_document}
-                                                    </span>
-                                                  ) : (
-                                                    <span className="text-sm text-red-500 flex items-center gap-1">
-                                                      <AlertCircle size={16} />
-                                                      Sin certificado
-                                                    </span>
-                                                  )}
-                                                </div>
-                                              )}
+                                              <span className="text-gray-600">{competitionType?.name || achievement.competitionType}</span>
                                             </td>
                                             <td className="px-6 py-4">
                                               <div className="flex items-center gap-2">
-                                                {isEditing ? (
-                                                  <>
-                                                    <motion.button
-                                                      type="button"
-                                                      onClick={() => handleSaveEdit(sportIndex, achievementIndex)}
-                                                      whileHover={{ scale: 1.1 }}
-                                                      whileTap={{ scale: 0.9 }}
-                                                      className="p-2 text-[#006837] hover:bg-[#006837] hover:bg-opacity-10 rounded-lg transition-colors"
-                                                    >
-                                                      <Save size={18} />
-                                                    </motion.button>
-                                                    <motion.button
-                                                      type="button"
-                                                      onClick={() => setEditingAchievement(null)}
-                                                      whileHover={{ scale: 1.1 }}
-                                                      whileTap={{ scale: 0.9 }}
-                                                      className="p-2 text-gray-500 hover:bg-gray-100 rounded-lg transition-colors"
-                                                    >
-                                                      <X size={18} />
-                                                    </motion.button>
-                                                  </>
+                                                {achievement.attached_document ? (
+                                                  <span className="flex items-center gap-1 text-sm text-gray-600">
+                                                    <FileText size={16} className="text-green-600" />
+                                                    {typeof achievement.attached_document === 'object' ? achievement.attached_document.name : achievement.attached_document}
+                                                  </span>
                                                 ) : (
-                                                  <>
-                                                    <motion.button
-                                                      type="button"
-                                                      onClick={() => handleEditAchievement(sportIndex, achievementIndex)}
-                                                      whileHover={{ scale: 1.1 }}
-                                                      whileTap={{ scale: 0.9 }}
-                                                      className="p-2 text-[#006837] hover:bg-[#006837] hover:bg-opacity-10 rounded-lg transition-colors"
-                                                    >
-                                                      <Edit2 size={18} />
-                                                    </motion.button>
-                                                    <motion.button
-                                                      type="button"
-                                                      onClick={() => handleCancelAchievement(sportIndex, achievementIndex)}
-                                                      whileHover={{ scale: 1.1 }}
-                                                      whileTap={{ scale: 0.9 }}
-                                                      className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                                                    >
-                                                      <X size={18} />
-                                                    </motion.button>
-                                                  </>
+                                                  <span className="text-sm text-red-500 flex items-center gap-1">
+                                                    <AlertCircle size={16} />
+                                                    Sin certificado
+                                                  </span>
                                                 )}
+                                              </div>
+                                            </td>
+                                            <td className="px-6 py-4">
+                                              <div className="flex items-center gap-2">
+                                                <motion.button
+                                                  type="button"
+                                                  onClick={() => handleEditAchievement(sportIndex, achievementIndex)}
+                                                  whileHover={{ scale: 1.1 }}
+                                                  whileTap={{ scale: 0.9 }}
+                                                  className="p-2 text-[#006837] hover:bg-[#006837] hover:bg-opacity-10 rounded-lg transition-colors"
+                                                >
+                                                  <Edit2 size={18} />
+                                                </motion.button>
+                                                <motion.button
+                                                  type="button"
+                                                  onClick={() => handleCancelAchievement(sportIndex, achievementIndex)}
+                                                  whileHover={{ scale: 1.1 }}
+                                                  whileTap={{ scale: 0.9 }}
+                                                  className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                                                >
+                                                  <X size={18} />
+                                                </motion.button>
                                               </div>
                                             </td>
                                           </motion.tr>
@@ -1242,7 +1170,7 @@ export const SportsHistoryPage = () => {
                                           <FormLabel className="text-gray-700">Nombre de la Competencia</FormLabel>
                                           <FormControl>
                                             <Input 
-                                              {...field} 
+                                              {...field}
                                               placeholder="Ej: Campeonato Regional" 
                                               className="focus-visible:ring-[#006837]"
                                               value={field.value || ''}
@@ -1303,13 +1231,25 @@ export const SportsHistoryPage = () => {
                                     </motion.button>
                                     <motion.button
                                       type="button"
-                                      onClick={() => handleAchievementComplete(sportIndex, achievementInProgress.achievementIndex)}
+                                      onClick={() => {
+                                        console.log('Botón confirmar logro clickeado');
+                                        handleAchievementComplete(sportIndex, achievementInProgress.achievementIndex);
+                                      }}
                                       whileHover={{ scale: 1.02 }}
                                       whileTap={{ scale: 0.98 }}
                                       className="px-6 py-2.5 bg-[#006837] text-white rounded-lg hover:bg-[#005828] transition-colors font-medium flex items-center gap-2 shadow-sm hover:shadow-md"
                                     >
-                                      <CheckCircle2 size={18} />
-                                      Confirmar Logro
+                                      {isSubmittingAchievement ? (
+                                        <>
+                                          <Loader2 size={18} className="animate-spin" />
+                                          Guardando...
+                                        </>
+                                      ) : (
+                                        <>
+                                          <CheckCircle2 size={18} />
+                                          Confirmar Logro
+                                        </>
+                                      )}
                                     </motion.button>
                                   </div>
                                 </motion.div>

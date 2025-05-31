@@ -1,6 +1,6 @@
 import axiosInstance from '../api/axios';
 import API_ENDPOINTS from '../api/endpoints';
-import { LoginDTO, LoginResponseDTO, RegisterDTO, UserDTO, PersonDTO } from '../types/dtos';
+import { LoginDTO, LoginResponseDTO, RegisterDTO, UserDTO, PersonDTO, UserRole } from '../types/dtos';
 import { api } from '../lib/axios';
 
 class AuthService {
@@ -11,17 +11,21 @@ class AuthService {
     try {
       const response = await axiosInstance.post<{ data: LoginResponseDTO }>(
         API_ENDPOINTS.AUTH.LOGIN,
-        credentials
+        {
+          document_number: credentials.document_number,
+          password: credentials.password,
+          document_type_id: credentials.document_type_id
+        }
       );
       
-      const { access_token } = response.data.data;
+      const { access_token, user } = response.data.data;
       this.setToken(access_token);
       
       // Obtener datos del usuario después del login
       const userData = await this.getProfile();
       this.setUserData(userData);
       
-      return { access_token };
+      return { access_token, user };
     } catch (error: any) {
       if (error.response?.status === 401) {
         throw new Error('Credenciales inválidas');
@@ -74,6 +78,7 @@ class AuthService {
       localStorage.removeItem('completed_par_q');
       localStorage.removeItem('completed_personal_data');
     }
+
   }
 
   getToken(): string | null {
@@ -127,15 +132,9 @@ class AuthService {
   }
 
   getUserData(): UserDTO | null {
-    return {
-      id: '1',
-      email: 'test@example.com',
-      document_number: '123456789',
-      full_name: 'Usuario de Prueba',
-      is_active: true,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    };
+    const userData = localStorage.getItem(this.USER_DATA_KEY);
+    if (!userData) return null;
+    return JSON.parse(userData);
   }
 }
 

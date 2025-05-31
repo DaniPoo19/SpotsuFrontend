@@ -5,7 +5,8 @@ import { RegisterAccountPage } from '../pages/auth/register-account';
 import { PersonalDataForm } from '../components/PersonalDataForm';
 import { HomePage } from '../pages/home';
 import { AspirantsPage } from '../pages/aspirants';
-import { AspirantDetailsPage } from '../pages/aspirants/details';
+import { AspirantDetailsPage } from '../pages/aspirants/[id]';
+import { MorphologicalEvaluationPage } from '../pages/aspirants/morphological-evaluation';
 import { ReportsPage } from '../pages/reports';
 import { ProfilePage } from '../pages/profile';
 import { SettingsPage } from '../pages/settings';
@@ -57,6 +58,7 @@ export const AppRoutes = () => {
         <Route path="home" element={<HomePage />} />
         <Route path="aspirants" element={<AspirantsPage />} />
         <Route path="aspirants/:id" element={<AspirantDetailsPage />} />
+        <Route path="aspirants/:id/morphological-evaluation" element={<MorphologicalEvaluationPage />} />
         <Route path="reports" element={<ReportsPage />} />
         <Route path="profile" element={<ProfilePage />} />
         <Route path="settings" element={<SettingsPage />} />

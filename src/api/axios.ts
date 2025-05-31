@@ -20,6 +20,7 @@ const axiosInstance = axios.create({
 // Interceptor para logs de peticiones
 axiosInstance.interceptors.request.use(
   (config) => {
+    // Asegurarse de que la URL comience con el prefijo de la API
     if (!config.url?.startsWith(API_CONFIG.API_PREFIX)) {
       config.url = `${API_CONFIG.API_PREFIX}${config.url}`;
     }

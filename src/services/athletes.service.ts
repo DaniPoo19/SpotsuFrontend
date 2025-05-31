@@ -18,47 +18,59 @@ export interface CreateAthleteDTO {
   phone: string;
 }
 
+const ENDPOINTS = {
+  ATHLETES: '/athletes'
+} as const;
+
 export const athletesService = {
-  async registerPersonalData(formData: any): Promise<AthleteDTO> {
+  async registerPersonalData(data: any): Promise<any> {
     try {
-      console.log('Enviando datos del deportista al backend...');
-      
-      // Transformar los datos al formato esperado por el backend
-      const athleteData: CreateAthleteDTO = {
-        name: formData.name.trim(),
-        last_name: formData.lastName.trim(),
-        birth_date: new Date(formData.birthDate + 'T00:00:00.000Z'), // Convertir a Date con hora 00:00:00
-        document_type_id: formData.documentType,
-        document_number: formData.documentNumber.trim(),
-        gender_id: formData.sex,
-        address: formData.address.trim(),
-        city: formData.city.trim(),
-        state: formData.department.trim(), // Usar department como state
-        country: formData.country.trim(),
-        email: formData.email.trim().toLowerCase(),
-        phone: formData.phone.trim()
-      };
-
-      console.log('Datos formateados:', athleteData);
-      
-      // Crear una copia del objeto para enviar al backend
-      const dataToSend = {
-        ...athleteData,
-        birth_date: athleteData.birth_date.toISOString().split('T')[0] // Formato YYYY-MM-DD
-      };
-
-      console.log('Datos a enviar:', dataToSend);
-      const response = await axiosInstance.post<ApiResponse<AthleteDTO>>(API_ENDPOINTS.ATHLETES.BASE, dataToSend);
-      console.log('Respuesta del servidor:', response.data);
-      return response.data.data;
-    } catch (error) {
-      console.error('Error al registrar deportista:', error);
-      if (isAxiosError(error) && error.response) {
-        const errorMessage = error.response.data.message || 'Error al registrar datos del deportista';
-        console.error('Error detallado:', error.response.data);
-        throw new Error(errorMessage);
+      // Asegurarse de que birthDate sea un objeto Date válido
+      let birthDate: string;
+      try {
+        if (data.birthDate instanceof Date) {
+          birthDate = data.birthDate.toISOString().split('T')[0];
+        } else if (typeof data.birthDate === 'string') {
+          birthDate = new Date(data.birthDate).toISOString().split('T')[0];
+        } else {
+          throw new Error('Formato de fecha inválido');
+        }
+      } catch (error) {
+        console.error('Error al procesar la fecha:', error);
+        throw new Error('La fecha de nacimiento es inválida');
       }
-      throw new Error('Error al conectar con el servidor');
+
+      // Formatear los datos según el DTO del backend
+      const formattedData = {
+        name: data.name?.trim() || '',
+        last_name: data.lastName?.trim() || '',
+        birth_date: birthDate,
+        document_type_id: data.documentType,
+        document_number: data.documentNumber?.trim() || '',
+        gender_id: data.sex,
+        city: data.city?.trim() || '',
+        state: data.department?.trim() || '',
+        country: data.country?.trim() || '',
+        address: data.address?.trim() || '',
+        email: data.email?.trim().toLowerCase() || '',
+        phone: data.phone?.trim() || ''
+      };
+
+      console.log('Datos formateados para el backend:', formattedData);
+      
+      const response = await axiosInstance.post<ApiResponse<any>>(ENDPOINTS.ATHLETES, formattedData);
+      return response.data.data;
+    } catch (error: any) {
+      console.error('Error al registrar deportista:', error);
+      if (error.response?.data) {
+        console.error('Error detallado:', error.response.data);
+        // Si hay mensajes de error específicos del backend, mostrarlos
+        if (Array.isArray(error.response.data.message)) {
+          throw new Error(error.response.data.message.join(', '));
+        }
+        throw new Error(error.response.data.message || 'Error al registrar deportista');
+      }
+      throw new Error(error.message || 'Error al conectar con el servidor');
     }
   },
 

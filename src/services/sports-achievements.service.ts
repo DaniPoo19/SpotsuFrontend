@@ -1,85 +1,93 @@
-import { api } from '../lib/axios';
-import API_ENDPOINTS from '../api/endpoints';
+import axiosInstance from '../api/axios';
+import { ApiResponse } from '../types/dtos';
 
-export interface SportsAchievementDTO {
-  id: string;
-  sport_history_id: string;
-  competition_category_id: string;
-  competition_hierarchy_id: string;
-  name: string;
-  description: string;
-  date: string;
-  position: string;
-  score: string;
-  created_at: string;
-  updated_at: string;
-}
+const ENDPOINTS = {
+  SPORTS_ACHIEVEMENTS: '/sports-achievements'
+} as const;
 
 export interface CreateSportsAchievementDTO {
-  sport_history_id: string;
-  achievement_type_id: string;
-  competition_category_id: string;
+  sport_competition_category_id: string;
   competition_hierarchy_id: string;
-  name: string;
-  description: string;
-  date: string;
-  position: string;
-  score: string;
+  score: number;
   postulation_id: string;
 }
 
+export interface SportsAchievement {
+  id: string;
+  sports_competition_category: {
+    id: string;
+    name: string;
+  };
+  competition_hierarchy: {
+    id: string;
+    name: string;
+  };
+  score: number;
+  is_active: boolean;
+  created_at: Date;
+  updated_at: Date;
+}
+
 export const sportsAchievementsService = {
-  // Obtener todos los logros
-  getAchievements: async (): Promise<SportsAchievementDTO[]> => {
+  async create(data: CreateSportsAchievementDTO): Promise<SportsAchievement> {
     try {
-      const response = await api.get(API_ENDPOINTS.SPORTS_ACHIEVEMENTS.BASE);
+      const response = await axiosInstance.post<ApiResponse<SportsAchievement>>(
+        ENDPOINTS.SPORTS_ACHIEVEMENTS,
+        data
+      );
       return response.data.data;
-    } catch (error) {
-      console.error('Error al obtener logros:', error);
-      throw error;
+    } catch (error: any) {
+      console.error('Error al crear logro deportivo:', error);
+      if (error.response?.data) {
+        console.error('Error detallado:', error.response.data);
+        if (Array.isArray(error.response.data.message)) {
+          throw new Error(error.response.data.message.join(', '));
+        }
+        throw new Error(error.response.data.message || 'Error al crear logro deportivo');
+      }
+      throw new Error('Error al conectar con el servidor');
     }
   },
 
-  // Obtener logros por historial deportivo
-  getAchievementsBySportHistory: async (sportHistoryId: string): Promise<SportsAchievementDTO[]> => {
+  async getAchievements(): Promise<SportsAchievement[]> {
     try {
-      const response = await api.get(API_ENDPOINTS.SPORTS_ACHIEVEMENTS.BY_SPORT_HISTORY(sportHistoryId));
+      const response = await axiosInstance.get<ApiResponse<SportsAchievement[]>>(ENDPOINTS.SPORTS_ACHIEVEMENTS);
       return response.data.data;
-    } catch (error) {
-      console.error(`Error al obtener logros para historial ${sportHistoryId}:`, error);
-      throw error;
+    } catch (error: any) {
+      console.error('Error al obtener logros deportivos:', error);
+      throw new Error('Error al obtener logros deportivos');
     }
   },
 
-  // Crear un nuevo logro
-  createAchievement: async (dto: CreateSportsAchievementDTO): Promise<SportsAchievementDTO> => {
+  async getAchievement(id: string): Promise<SportsAchievement> {
     try {
-      const response = await api.post(API_ENDPOINTS.SPORTS_ACHIEVEMENTS.BASE, dto);
+      const response = await axiosInstance.get<ApiResponse<SportsAchievement>>(`${ENDPOINTS.SPORTS_ACHIEVEMENTS}/${id}`);
       return response.data.data;
-    } catch (error) {
-      console.error('Error al crear logro:', error);
-      throw error;
+    } catch (error: any) {
+      console.error('Error al obtener logro deportivo:', error);
+      throw new Error('Error al obtener logro deportivo');
     }
   },
 
-  // Actualizar un logro existente
-  updateAchievement: async (id: string, dto: Partial<CreateSportsAchievementDTO>): Promise<SportsAchievementDTO> => {
+  async updateAchievement(id: string, data: Partial<CreateSportsAchievementDTO>): Promise<SportsAchievement> {
     try {
-      const response = await api.put(API_ENDPOINTS.SPORTS_ACHIEVEMENTS.BY_ID(id), dto);
+      const response = await axiosInstance.patch<ApiResponse<SportsAchievement>>(
+        `${ENDPOINTS.SPORTS_ACHIEVEMENTS}/${id}`,
+        data
+      );
       return response.data.data;
-    } catch (error) {
-      console.error(`Error al actualizar logro ${id}:`, error);
-      throw error;
+    } catch (error: any) {
+      console.error('Error al actualizar logro deportivo:', error);
+      throw new Error('Error al actualizar logro deportivo');
     }
   },
 
-  // Eliminar un logro
-  deleteAchievement: async (id: string): Promise<void> => {
+  async deleteAchievement(id: string): Promise<void> {
     try {
-      await api.delete(API_ENDPOINTS.SPORTS_ACHIEVEMENTS.BY_ID(id));
-    } catch (error) {
-      console.error(`Error al eliminar logro ${id}:`, error);
-      throw error;
+      await axiosInstance.delete<ApiResponse<void>>(`${ENDPOINTS.SPORTS_ACHIEVEMENTS}/${id}`);
+    } catch (error: any) {
+      console.error('Error al eliminar logro deportivo:', error);
+      throw new Error('Error al eliminar logro deportivo');
     }
   }
 }; 

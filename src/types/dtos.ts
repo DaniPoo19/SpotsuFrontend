@@ -1,14 +1,25 @@
 // Auth DTOs
 export interface LoginDTO {
+  document_type_id: string;
   document_number: string;
   password: string;
 }
 
 export interface LoginResponseDTO {
   access_token: string;
+  user: {
+    id: string;
+    document_number: string;
+    role: {
+      id: string;
+      name: string;
+    };
+  };
 }
 
 export interface RegisterDTO {
+  name: string;
+  lastname: string;
   document_number: string;
   password: string;
   role_id: string;
@@ -27,19 +38,20 @@ export interface UserDTO {
 // Person DTOs
 export interface PersonDTO {
   id: string;
-  name: string;
+  document_number: string;
   full_name: string;
+  name: string;
   birth_date: string;
   document_type_id: string;
-  document_number: string;
+  document_type?: string;
   gender_id: string;
+  phone: string;
+  email: string;
   address: string;
   city: string;
-  department: string;
+  state: string;
   country: string;
-  email: string;
-  phone: string;
-  family_phone: string;
+  nationality: string;
   created_at: string;
   updated_at: string;
 }
@@ -143,6 +155,25 @@ export interface AspirantDTO {
   };
   createdAt: string;
   updatedAt: string;
+  birthDate?: string;
+  gender?: string;
+  city?: string;
+  state?: string;
+  country?: string;
+  address?: string;
+  phone?: string;
+  sportHistories?: Array<{
+    id: string;
+    sport: {
+      id: string;
+      name: string;
+    };
+    startDate: string;
+    endDate: string | null;
+    institution: string;
+    achievements: string;
+    status: string;
+  }>;
 }
 
 export interface CreateAspirantDTO {
@@ -224,11 +255,22 @@ export interface AttachedDocumentDTO {
   updated_at: string;
 }
 
+export interface UserRole {
+  id: string;
+  role: string;
+  user_id: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface CreateAttachedDocumentDTO {
   file: File;
   document_type_id: string;
+  attached_document_type_id: string;
   reference_id: string;
   reference_type: string;
+  postulation_id: string;
 }
 
 export interface SportsAchievementDTO {
@@ -264,9 +306,59 @@ export interface CreateUserDTO {
   role_id: string;
 }
 
-export interface UserRole {
+export interface CompetitionHierarchy {
   id: string;
-  role: 'ADMIN' | 'ATHLETE';
   name: string;
-  email: string;
+  category_id: string;
+  description?: string;
+  competition_hierarchy?: {
+    id: string;
+    name: string;
+  };
+}
+
+export interface Sport {
+  id: string;
+  name: string;
+  is_active: boolean;
+}
+
+export interface CompetitionCategory {
+  id: string;
+  name: string;
+  is_active: boolean;
+}
+
+export interface Achievement {
+  id?: string;
+  achievement_type_id: string;
+  competition_category_id: string;
+  competition_hierarchy_id: string;
+  achievement_date: string;
+  description: string;
+  attached_document?: File | null;
+  attached_document_type_id?: string;
+  competitionCategory?: string;
+  competitionType?: string;
+  competitionName?: string;
+  date?: string;
+  position?: string;
+  score?: string;
+}
+
+export interface SportHistory {
+  sport_id: string;
+  achievements: Achievement[];
+  sport?: any;
+  startDate?: string;
+  endDate?: string;
+  institution?: string;
+}
+
+export interface FormValues {
+  sportsHistory: SportHistory[];
+  documents?: {
+    consentForm?: File | null;
+    MedicCertificate?: File | null;
+  };
 } 

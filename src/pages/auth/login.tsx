@@ -1,29 +1,73 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { toast } from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
-import { LoginDTO } from '../../types/dtos';
+import { LoginDTO, DocumentTypeDTO, ApiResponse } from '../../types/dtos';
 import icono2 from '@/assets/2.png';
 import { Eye, EyeOff } from 'lucide-react';
+import axiosInstance from '../../api/axios';
 
 export const LoginPage = () => {
   const navigate = useNavigate();
   const { login } = useAuth();
   const [formData, setFormData] = useState<LoginDTO>({
+    document_type_id: '',
     document_number: '',
     password: ''
   });
+  const [documentTypes, setDocumentTypes] = useState<DocumentTypeDTO[]>([]);
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  useEffect(() => {
+    const fetchDocumentTypes = async () => {
+      try {
+        const response = await axiosInstance.get<ApiResponse<DocumentTypeDTO[]>>('/document-types');
+        if (response.data?.data) {
+          setDocumentTypes(response.data.data);
+        }
+      } catch (error) {
+        console.error('Error al cargar tipos de documento:', error);
+        toast.error('Error al cargar tipos de documento');
+      }
+    };
+
+    fetchDocumentTypes();
+  }, []);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({
-      ...prev,
-      [name]: value
+     ...prev,
+     [name]: value
     }));
+    setError('');
+  };
+
+  const validateForm = () => {
+    if (!formData.document_type_id) {
+      setError('Por favor seleccione el tipo de documento');
+      return false;
+    }
+
+    if (!formData.document_number.trim()) {
+      setError('Por favor ingrese su número de documento');
+      return false;
+    }
+
+    if (!/^\d+$/.test(formData.document_number)) {
+      setError('El número de documento debe contener solo números');
+      return false;
+    }
+
+    if (!formData.password) {
+      setError('Por favor ingrese su contraseña');
+      return false;
+    }
+
+    return true;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -31,15 +75,30 @@ export const LoginPage = () => {
     setLoading(true);
     setError('');
 
+    if (!validateForm()) {
+      setLoading(false);
+      return;
+    }
+
     try {
-      if (!formData.document_number || !formData.password) {
-        setError('Por favor complete todos los campos');
+      const response = await login({...formData});
+      toast.success('¡Bienvenido!');
+
+      console.log({response});
+      if(response === null){
+        //TODO: ESTO NUNCA DEBE PASAR SI PASA ES UN ERROR Y TIENES QUE REINICIAR TODO EL FORMULARIO
+        toast.error('Error al iniciar sesión');
+        setLoading(false);
         return;
       }
-
-      await login(formData);
-      toast.success('¡Bienvenido!');
-      navigate('/dashboard');
+      // Redirigir según el rol del usuario
+      if (response.role.name === "ATHLETE") {
+        navigate('/par-q');
+      } else if (response.role.name === 'PROFESSIONAL') {
+        navigate('/dashboard');
+      } else {
+        navigate('/dashboard');
+      }
     } catch (error: any) {
       console.error('Error en login:', error);
       
@@ -98,6 +157,27 @@ export const LoginPage = () => {
             className="bg-white p-8 rounded-2xl shadow-lg"
           >
             <form onSubmit={handleSubmit} className="space-y-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Tipo de Documento
+                </label>
+                <select
+                  name="document_type_id"
+                  value={formData.document_type_id}
+                  onChange={handleChange}
+                  className="w-full px-4 py-2 border rounded-xl focus:ring-2 focus:ring-[#006837] focus:border-transparent transition-all"
+                  required
+                  disabled={loading}
+                >
+                  <option value="">Seleccione un tipo de documento</option>
+                  {documentTypes.map(type => (
+                    <option key={type.id} value={type.id}>
+                      {type.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Número de Documento

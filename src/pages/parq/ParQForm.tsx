@@ -43,24 +43,31 @@ export const ParQForm = () => {
     }
   };
 
-  const handleAnswer = (questionId: string, answer: boolean) => {
+  const setAnswer = (questionId: string, answer: boolean) => {
     setAnswers(prev => ({
       ...prev,
       [questionId]: answer
     }));
-
-    // Avanzar a la siguiente pregunta después de un breve delay
-    setTimeout(() => {
-      if (currentQuestion < questions.length - 1) {
-        setCurrentQuestion(prev => prev + 1);
-      }
-    }, 300);
   };
 
   const validateForm = () => {
     return questions.every(q => answers[q.id] !== null);
   };
+  const handleSaveAnswer = async () => {
+    const actualQuestion = questions[currentQuestion];
+    const answer = answers[actualQuestion.id];
 
+    console.log({actualQuestion, answer});
+
+    if(answer === null){
+      toast.error('Por favor responda la pregunta');
+      return;
+    }
+
+    if(currentQuestion < questions.length - 1){
+      setCurrentQuestion(prev => prev + 1);
+    }
+  }
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -162,7 +169,7 @@ export const ParQForm = () => {
             </div>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-6">
+          <div className="space-y-6">
             <AnimatePresence mode="wait">
               <motion.div
                 key={currentQuestion}
@@ -183,7 +190,7 @@ export const ParQForm = () => {
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
                     type="button"
-                    onClick={() => handleAnswer(questions[currentQuestion].id, true)}
+                    onClick={() => setAnswer(questions[currentQuestion].id, true)}
                     className={`flex-1 py-3 px-6 rounded-xl border text-lg font-medium transition-all ${
                       answers[questions[currentQuestion].id] === true
                         ? 'bg-[#006837] text-white border-[#006837]'
@@ -196,7 +203,7 @@ export const ParQForm = () => {
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
                     type="button"
-                    onClick={() => handleAnswer(questions[currentQuestion].id, false)}
+                    onClick={() => setAnswer(questions[currentQuestion].id, false)}
                     className={`flex-1 py-3 px-6 rounded-xl border text-lg font-medium transition-all ${
                       answers[questions[currentQuestion].id] === false
                         ? 'bg-[#006837] text-white border-[#006837]'
@@ -235,8 +242,8 @@ export const ParQForm = () => {
                 <motion.button
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
-                  type="submit"
-                  disabled={submitting || !validateForm()}
+                  disabled={answers[questions[currentQuestion].id] === null}
+                  onClick={() => handleSaveAnswer()}
                   className="px-8 py-3 bg-[#006837] text-white rounded-lg hover:bg-[#005828] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {submitting ? (
@@ -250,7 +257,7 @@ export const ParQForm = () => {
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                   type="button"
-                  onClick={() => setCurrentQuestion(prev => Math.min(questions.length - 1, prev + 1))}
+                  onClick={() => handleSaveAnswer()}
                   disabled={answers[questions[currentQuestion].id] === null}
                   className="px-6 py-2 bg-[#006837] text-white rounded-lg hover:bg-[#005828] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
@@ -258,7 +265,7 @@ export const ParQForm = () => {
                 </motion.button>
               )}
             </div>
-          </form>
+          </div>
         </motion.div>
       </div>
     </div>

@@ -207,14 +207,12 @@ export const PersonalDataForm = () => {
       setIsSubmitting(true);
       console.log('Enviando datos al backend:', values);
       
-      // Asegurarse de que la fecha esté en el formato correcto YYYY-MM-DD
-      const formattedDate = values.birthDate.toISOString().split('T')[0];
-      const dataToSend = {
-        ...values,
-        birthDate: formattedDate
-      };
-      
-      const response = await athletesService.registerPersonalData(dataToSend);
+      // Asegurarse de que la fecha sea un objeto Date válido
+      if (!(values.birthDate instanceof Date)) {
+        throw new Error('La fecha de nacimiento es inválida');
+      }
+
+      const response = await athletesService.registerPersonalData(values);
       console.log('Respuesta del backend:', response);
       
       toast.success('Datos del deportista registrados correctamente');
@@ -338,25 +336,29 @@ export const PersonalDataForm = () => {
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 p-4">
-      <div className="max-w-2xl w-full bg-white rounded-2xl shadow-lg p-8">
+      <div className="max-w-3xl w-full bg-white rounded-2xl shadow-lg p-8">
         <div className="flex justify-center mb-6">
-          <img src={logo2} alt="Logo" className="h-16" />
+          <img src={logo2} alt="Logo" className="h-20" />
         </div>
-        <h2 className="text-2xl font-bold text-[#006837] mb-4 text-center">Registro de Deportista</h2>
+        <h2 className="text-2xl font-bold text-[#006837] mb-6 text-center">Registro de Deportista</h2>
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-5">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               <FormField
                 control={form.control}
                 name="name"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="flex items-center gap-2">
-                      <User className="h-4 w-4" />
+                    <FormLabel className="flex items-center gap-2 text-base">
+                      <User className="h-5 w-5" />
                       Nombre
                     </FormLabel>
                     <FormControl>
-                      <Input placeholder="Ingrese su nombre" {...field} />
+                      <Input 
+                        placeholder="Ingrese su nombre" 
+                        {...field} 
+                        className="h-11 text-base"
+                      />
                     </FormControl>
                     <FormMessage className="text-red-500" />
                   </FormItem>
@@ -368,12 +370,16 @@ export const PersonalDataForm = () => {
                 name="lastName"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="flex items-center gap-2">
-                      <User className="h-4 w-4" />
+                    <FormLabel className="flex items-center gap-2 text-base">
+                      <User className="h-5 w-5" />
                       Apellido
                     </FormLabel>
                     <FormControl>
-                      <Input placeholder="Ingrese su apellido" {...field} />
+                      <Input 
+                        placeholder="Ingrese su apellido" 
+                        {...field} 
+                        className="h-11 text-base"
+                      />
                     </FormControl>
                     <FormMessage className="text-red-500" />
                   </FormItem>
@@ -384,9 +390,9 @@ export const PersonalDataForm = () => {
                 control={form.control}
                 name="birthDate"
                 render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="flex items-center gap-2">
-                      <Calendar className="h-4 w-4" />
+                  <FormItem className="relative">
+                    <FormLabel className="flex items-center gap-2 text-base">
+                      <Calendar className="h-5 w-5" />
                       Fecha de Nacimiento
                     </FormLabel>
                     <FormControl>
@@ -395,8 +401,19 @@ export const PersonalDataForm = () => {
                         onChange={field.onChange}
                         locale="es"
                         dateFormat="dd/MM/yyyy"
-                        className="w-full p-2 border rounded-md"
+                        className="w-full h-11 text-base px-4 border rounded-md focus:ring-2 focus:ring-[#006837] focus:border-[#006837] transition-all duration-200"
                         placeholderText="Seleccione su fecha de nacimiento"
+                        showYearDropdown
+                        scrollableYearDropdown
+                        yearDropdownItemNumber={100}
+                        maxDate={new Date()}
+                        minDate={new Date(1900, 0, 1)}
+                        customInput={
+                          <Input 
+                            className="h-11 text-base cursor-pointer"
+                            readOnly
+                          />
+                        }
                       />
                     </FormControl>
                     <FormMessage className="text-red-500" />
@@ -409,19 +426,19 @@ export const PersonalDataForm = () => {
                 name="sex"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="flex items-center gap-2">
-                      <UserRound className="h-4 w-4" />
+                    <FormLabel className="flex items-center gap-2 text-base">
+                      <UserRound className="h-5 w-5" />
                       Género
                     </FormLabel>
                     <Select onValueChange={field.onChange} defaultValue={field.value}>
                       <FormControl>
-                        <SelectTrigger>
+                        <SelectTrigger className="h-11 text-base">
                           <SelectValue placeholder="Seleccione su género" />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
                         {genders.map((gender) => (
-                          <SelectItem key={gender.id} value={gender.id.toString()}>
+                          <SelectItem key={gender.id} value={gender.id.toString()} className="text-base">
                             {gender.name}
                           </SelectItem>
                         ))}
@@ -437,19 +454,19 @@ export const PersonalDataForm = () => {
                 name="documentType"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="flex items-center gap-2">
-                      <FileText className="h-4 w-4" />
+                    <FormLabel className="flex items-center gap-2 text-base">
+                      <FileText className="h-5 w-5" />
                       Tipo de Documento
                     </FormLabel>
                     <Select onValueChange={field.onChange} defaultValue={field.value}>
                       <FormControl>
-                        <SelectTrigger>
+                        <SelectTrigger className="h-11 text-base">
                           <SelectValue placeholder="Seleccione tipo de documento" />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
                         {documentTypes.map((type) => (
-                          <SelectItem key={type.id} value={type.id.toString()}>
+                          <SelectItem key={type.id} value={type.id.toString()} className="text-base">
                             {type.name}
                           </SelectItem>
                         ))}
@@ -465,12 +482,16 @@ export const PersonalDataForm = () => {
                 name="documentNumber"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="flex items-center gap-2">
-                      <Hash className="h-4 w-4" />
+                    <FormLabel className="flex items-center gap-2 text-base">
+                      <Hash className="h-5 w-5" />
                       Número de Documento
                     </FormLabel>
                     <FormControl>
-                      <Input placeholder="Ingrese su número de documento" {...field} />
+                      <Input 
+                        placeholder="Ingrese su número de documento" 
+                        {...field} 
+                        className="h-11 text-base"
+                      />
                     </FormControl>
                     <FormMessage className="text-red-500" />
                   </FormItem>
@@ -482,12 +503,16 @@ export const PersonalDataForm = () => {
                 name="address"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="flex items-center gap-2">
-                      <MapPin className="h-4 w-4" />
+                    <FormLabel className="flex items-center gap-2 text-base">
+                      <MapPin className="h-5 w-5" />
                       Dirección
                     </FormLabel>
                     <FormControl>
-                      <Input placeholder="Ingrese su dirección" {...field} />
+                      <Input 
+                        placeholder="Ingrese su dirección" 
+                        {...field} 
+                        className="h-11 text-base"
+                      />
                     </FormControl>
                     <FormMessage className="text-red-500" />
                   </FormItem>
@@ -499,8 +524,8 @@ export const PersonalDataForm = () => {
                 name="department"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="flex items-center gap-2">
-                      <Building className="h-4 w-4" />
+                    <FormLabel className="flex items-center gap-2 text-base">
+                      <Building className="h-5 w-5" />
                       Departamento
                     </FormLabel>
                     <Select 
@@ -511,13 +536,13 @@ export const PersonalDataForm = () => {
                       defaultValue={field.value}
                     >
                       <FormControl>
-                        <SelectTrigger>
+                        <SelectTrigger className="h-11 text-base">
                           <SelectValue placeholder="Seleccione departamento" />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
                         {departamentos.map((depto) => (
-                          <SelectItem key={depto} value={depto}>
+                          <SelectItem key={depto} value={depto} className="text-base">
                             {depto}
                           </SelectItem>
                         ))}
@@ -533,19 +558,19 @@ export const PersonalDataForm = () => {
                 name="city"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="flex items-center gap-2">
-                      <Building className="h-4 w-4" />
+                    <FormLabel className="flex items-center gap-2 text-base">
+                      <Building className="h-5 w-5" />
                       Ciudad
                     </FormLabel>
                     <Select onValueChange={field.onChange} defaultValue={field.value}>
                       <FormControl>
-                        <SelectTrigger>
+                        <SelectTrigger className="h-11 text-base">
                           <SelectValue placeholder="Seleccione ciudad" />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
                         {filteredCities.map((city) => (
-                          <SelectItem key={city} value={city}>
+                          <SelectItem key={city} value={city} className="text-base">
                             {city}
                           </SelectItem>
                         ))}
@@ -561,19 +586,19 @@ export const PersonalDataForm = () => {
                 name="country"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="flex items-center gap-2">
-                      <Globe className="h-4 w-4" />
+                    <FormLabel className="flex items-center gap-2 text-base">
+                      <Globe className="h-5 w-5" />
                       País
                     </FormLabel>
                     <Select onValueChange={field.onChange} defaultValue={field.value}>
                       <FormControl>
-                        <SelectTrigger>
+                        <SelectTrigger className="h-11 text-base">
                           <SelectValue placeholder="Seleccione país" />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
                         {filteredCountries.map((country) => (
-                          <SelectItem key={country} value={country}>
+                          <SelectItem key={country} value={country} className="text-base">
                             {country}
                           </SelectItem>
                         ))}
@@ -589,12 +614,16 @@ export const PersonalDataForm = () => {
                 name="email"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="flex items-center gap-2">
-                      <Mail className="h-4 w-4" />
+                    <FormLabel className="flex items-center gap-2 text-base">
+                      <Mail className="h-5 w-5" />
                       Correo Electrónico
                     </FormLabel>
                     <FormControl>
-                      <Input placeholder="Ingrese su correo electrónico" {...field} />
+                      <Input 
+                        placeholder="Ingrese su correo electrónico" 
+                        {...field} 
+                        className="h-11 text-base"
+                      />
                     </FormControl>
                     <FormMessage className="text-red-500" />
                   </FormItem>
@@ -606,12 +635,16 @@ export const PersonalDataForm = () => {
                 name="phone"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="flex items-center gap-2">
-                      <Phone className="h-4 w-4" />
+                    <FormLabel className="flex items-center gap-2 text-base">
+                      <Phone className="h-5 w-5" />
                       Teléfono
                     </FormLabel>
                     <FormControl>
-                      <Input placeholder="Ingrese su número de teléfono" {...field} />
+                      <Input 
+                        placeholder="Ingrese su número de teléfono" 
+                        {...field} 
+                        className="h-11 text-base"
+                      />
                     </FormControl>
                     <FormMessage className="text-red-500" />
                   </FormItem>
@@ -622,7 +655,7 @@ export const PersonalDataForm = () => {
             <div className="flex justify-center mt-6">
               <Button 
                 type="submit" 
-                className="bg-[#006837] hover:bg-[#005828] text-white px-8 py-2 rounded-lg"
+                className="bg-[#006837] hover:bg-[#005828] text-white px-10 py-2.5 rounded-lg text-base font-semibold transition-all duration-200 hover:scale-105"
                 disabled={isSubmitting}
               >
                 {isSubmitting ? 'Guardando...' : 'Guardar y continuar'}

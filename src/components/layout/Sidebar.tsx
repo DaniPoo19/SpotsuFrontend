@@ -58,8 +58,8 @@ export const Sidebar = () => {
             <User size={20} />
           </div>
           <div>
-            <p className="font-medium">{user?.email || 'Usuario'}</p>
-            <p className="text-sm text-white/70">{user?.role.name || 'Rol'}</p>
+            <p className="font-medium">{user?.document_number || 'Usuario'}</p>
+            <p className="text-sm text-white/70">{user?.role?.name || 'Rol'}</p>
           </div>
         </div>
         <button
