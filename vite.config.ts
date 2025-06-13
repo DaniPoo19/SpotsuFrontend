@@ -17,5 +17,5 @@ export default defineConfig({
     strictPort: true,
     host: true,
   },
-  base: '/ProyectoSpotsu/',  // ✅ Corregido para GitHub Pages
+  base: '/SpotsuFrontend/',  // ✅ Corregido para GitHub Pages
 });
