@@ -1,31 +1,30 @@
 import React from 'react';
-import { useNavigate, useLocation, Link } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Home,
   Users,
   Settings,
   LayoutDashboard,
   LogOut,
-  User,
+  Medal,
   FileText
 } from 'lucide-react';
-import { useAuth } from '../../contexts/AuthContext';
+import { currentUser } from '../../data';
 
 const navItems = [
-  { icon: Home, label: 'Inicio', path: '/dashboard/home' },
-  { icon: LayoutDashboard, label: 'Panel de Control', path: '/dashboard/inicio' },
-  { icon: Users, label: 'Aspirantes', path: '/dashboard/aspirants' },
-  { icon: FileText, label: 'Reportes', path: '/dashboard/reports' },
-  { icon: Settings, label: 'Configuración', path: '/dashboard/settings' },
+  { icon: Home, label: 'Inicio', path: '/' },
+  { icon: LayoutDashboard, label: 'Panel de Control', path: '/dashboard' },
+  { icon: Users, label: 'Aspirantes', path: '/aspirants' },
+  { icon: Medal, label: 'Historial Deportivo', path: '/sports-history' },
+  { icon: FileText, label: 'Reportes', path: '/reports' },
+  { icon: Settings, label: 'Configuración', path: '/settings' },
 ];
 
 export const Sidebar = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, logout } = useAuth();
 
   const handleLogout = () => {
-    logout();
     navigate('/login');
   };
 
@@ -37,34 +36,37 @@ export const Sidebar = () => {
       
       <nav className="flex-1">
         {navItems.map((item) => (
-          <Link
+          <button
             key={item.label}
-            to={item.path}
-            className={`flex items-center gap-3 p-3 rounded-xl transition-colors ${
-              location.pathname === item.path
-                ? 'bg-white/20'
-                : 'hover:bg-white/10'
+            onClick={() => navigate(item.path)}
+            className={`w-full flex items-center gap-3 p-3 rounded-xl transition-colors ${
+              location.pathname === item.path ? 'bg-white/20' : 'hover:bg-white/10'
             }`}
           >
             <item.icon size={20} />
             <span>{item.label}</span>
-          </Link>
+          </button>
         ))}
       </nav>
 
       <div className="border-t border-white/20 pt-4">
-        <div className="flex items-center gap-3 p-3">
-          <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center">
-            <User size={20} />
+        <button
+          onClick={() => navigate('/profile')}
+          className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-white/10 transition-colors"
+        >
+          <img
+            src={currentUser.avatar}
+            alt={currentUser.name}
+            className="w-10 h-10 rounded-full"
+          />
+          <div className="text-left">
+            <p className="font-medium">{currentUser.name}</p>
+            <p className="text-sm text-white/70">{currentUser.email}</p>
           </div>
-          <div>
-            <p className="font-medium">{user?.document_number || 'Usuario'}</p>
-            <p className="text-sm text-white/70">{user?.role?.name || 'Rol'}</p>
-          </div>
-        </div>
+        </button>
         <button
           onClick={handleLogout}
-          className="w-full mt-2 flex items-center gap-3 p-3 rounded-xl hover:bg-white/10 transition-colors"
+          className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-white/10 transition-colors text-red-300 hover:text-red-200 mt-2"
         >
           <LogOut size={20} />
           <span>Cerrar Sesión</span>

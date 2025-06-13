@@ -73,6 +73,16 @@ const API_ENDPOINTS = {
     CURRENT: '/postulations/current',
     BY_ID: (id: string) => `/postulations/${id}`,
   },
+  // Postulation Sports
+  POSTULATION_SPORTS: {
+    BASE: '/postulation-sports',
+    BY_ID: (id: string) => `/postulation-sports/${id}`,
+  },
+  // Postulation Sport Achievements
+  POSTULATION_SPORT_ACHIEVEMENTS: {
+    BASE: '/postulation-sport-achievements',
+    BY_ID: (id: string) => `/postulation-sport-achievements/${id}`,
+  },
 };
 
 export default API_ENDPOINTS; 

@@ -30,13 +30,11 @@ axiosInstance.interceptors.request.use(
       !config.url.includes('/auth/login') &&
       !config.url.includes('/auth/register')
     ) {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('auth_token');
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
       }
     }
-
-    console.log(`[API Request] ${config.method?.toUpperCase()} ${config.baseURL}${config.url}`);
 
     return config;
   },
@@ -46,17 +44,12 @@ axiosInstance.interceptors.request.use(
   }
 );
 
-
 // Interceptor para manejar respuestas y errores
 axiosInstance.interceptors.response.use(
   (response) => {
-    const url = `${response.config.baseURL}${response.config.url}`;
-    console.log(`[API Response Success] ${response.status} ${response.config.method?.toUpperCase()} ${url}`);
     return response;
   },
   (error) => {
-    console.error('[API Response Error]:', error);
-
     // Manejar errores de red
     if (error.code === 'ERR_NETWORK') {
       toast.error('No se pudo conectar con el servidor. Verifique que el servidor esté en ejecución.');
@@ -79,8 +72,8 @@ axiosInstance.interceptors.response.use(
       }
 
       if (status === 401) {
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
+        localStorage.removeItem('auth_token');
+        localStorage.removeItem('user_data');
         errorMessage = 'Sesión expirada. Por favor, inicie sesión nuevamente.';
         setTimeout(() => {
           window.location.href = '/login';

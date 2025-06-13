@@ -1,6 +1,6 @@
 import React from 'react';
 import { Mail, Phone, MapPin, Calendar, Camera, Edit2 } from 'lucide-react';
-import { currentUser } from '../../data';
+import { currentUser } from '../../../../data';
 
 export const ProfilePage = () => {
   return (

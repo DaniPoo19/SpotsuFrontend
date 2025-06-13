@@ -76,5 +76,19 @@ export const sportHistoriesService = {
       console.error(`Error al eliminar historial deportivo ${id}:`, error);
       throw error;
     }
+  },
+
+  // Obtener historiales deportivos por postulación
+  getSportHistoriesByPostulation: async (postulationId: string): Promise<SportHistoryDTO[]> => {
+    try {
+      // Intentar usar un endpoint específico si existe en el backend
+      const response = await api.get(API_ENDPOINTS.SPORT_HISTORIES.BASE, {
+        params: { postulation_id: postulationId }
+      });
+      return response.data.data;
+    } catch (error) {
+      console.error(`Error al obtener historiales deportivos para la postulación ${postulationId}:`, error);
+      throw error;
+    }
   }
 }; 

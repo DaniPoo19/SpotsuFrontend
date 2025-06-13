@@ -1,0 +1,1 @@
+export { mockAspirants, currentUser } from '@/data'; 

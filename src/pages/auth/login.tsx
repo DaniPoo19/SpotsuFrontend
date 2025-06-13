@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { toast } from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
@@ -40,8 +40,8 @@ export const LoginPage = () => {
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({
-     ...prev,
-     [name]: value
+      ...prev,
+      [name]: value
     }));
     setError('');
   };
@@ -72,43 +72,52 @@ export const LoginPage = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
     setError('');
-
-    if (!validateForm()) {
-      setLoading(false);
-      return;
-    }
+    setLoading(true);
 
     try {
-      const response = await login({...formData});
-      toast.success('¡Bienvenido!');
+      console.log('Iniciando proceso de login en la página...');
+      const user = await login(formData);
+      console.log('Login exitoso, usuario:', user);
 
-      console.log({response});
-      if(response === null){
-        //TODO: ESTO NUNCA DEBE PASAR SI PASA ES UN ERROR Y TIENES QUE REINICIAR TODO EL FORMULARIO
-        toast.error('Error al iniciar sesión');
-        setLoading(false);
-        return;
-      }
-      // Redirigir según el rol del usuario
-      if (response.role.name === "ATHLETE") {
-        navigate('/par-q');
-      } else if (response.role.name === 'PROFESSIONAL') {
-        navigate('/dashboard');
+      // Guardar el token y los datos del usuario
+      if (user.token) {
+        console.log('Guardando token y datos del usuario...');
+        localStorage.setItem('auth_token', user.token);
+        localStorage.setItem('user_data', JSON.stringify(user));
       } else {
-        navigate('/dashboard');
+        console.error('No se recibió token en la respuesta del login');
+        throw new Error('Error en la autenticación');
+      }
+
+      // Redirigir según el rol
+      switch (user.role.name) {
+        case 'ATHLETE':
+          console.log('Redirigiendo a dashboard de atleta...');
+          navigate('/user-dashboard');
+          break;
+        case 'PROFESSIONAL':
+        case 'ADMIN':
+          console.log('Redirigiendo a dashboard de profesional/admin...');
+          navigate('/dashboard/home');
+          break;
+        default:
+          console.log('Rol no reconocido:', user.role.name);
+          setError('Rol de usuario no válido');
       }
     } catch (error: any) {
-      console.error('Error en login:', error);
-      
+      console.error('Error en login de la página:', error);
       if (error.response?.status === 401) {
-        toast.error('Credenciales inválidas');
-      } else if (error.message?.includes('no existe') || error.message?.includes('no registrado')) {
-        toast.error('Usuario no registrado. Por favor, regístrese primero.');
-        navigate('/register-account');
+        setError('Credenciales inválidas');
+      } else if (error.response?.status === 404) {
+        setError('Usuario no registrado');
+        // Redirigir al registro después de 2 segundos
+        setTimeout(() => {
+          console.log('Redirigiendo a registro...');
+          navigate('/register');
+        }, 2000);
       } else {
-        setError(error.message || 'Error al iniciar sesión');
+        setError('Error al iniciar sesión. Por favor, intente nuevamente.');
       }
     } finally {
       setLoading(false);
@@ -243,18 +252,15 @@ export const LoginPage = () => {
                 )}
               </motion.button>
 
-              <div className="text-center">
-                <p className="text-sm text-gray-600">
+              <div className="text-center mt-4">
+                <p className="text-gray-600">
                   ¿No tienes una cuenta?{' '}
-                  <motion.button
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    type="button"
-                    onClick={() => navigate('/register-account')}
-                    className="text-[#006837] hover:text-[#005828] font-medium"
+                  <Link
+                    to="/register"
+                    className="text-[#006837] hover:text-[#005828] font-medium transition-colors"
                   >
                     Regístrate aquí
-                  </motion.button>
+                  </Link>
                 </p>
               </div>
             </form>

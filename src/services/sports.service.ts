@@ -172,8 +172,8 @@ export const sportsService = {
   // Obtener tipos de documentos adjuntos
   getAttachedDocumentTypes: async (): Promise<AttachedDocumentType[]> => {
     try {
-      const response = await api.get(API_ENDPOINTS.ATTACHED_DOCUMENTS.BASE);
-      return response.data.data.filter((type: AttachedDocumentType) => type.is_active);
+      const response = await api.get('/attached-document-types');
+      return response.data.data;
     } catch (error) {
       console.error('Error fetching document types:', error);
       throw error;
@@ -181,43 +181,53 @@ export const sportsService = {
   },
 
   // Crear relación postulación-deporte
-  createPostulationSport: async (data: { postulation_id: string; sport_id: string }): Promise<any> => {
+  createPostulationSport: async (data: { postulation_id: string; sport_id: string; experience_years: number }): Promise<any> => {
     try {
-      const response = await api.post(API_ENDPOINTS.POSTULATIONS.BASE + '/sports', data);
-      return response.data;
+      const response = await api.post(API_ENDPOINTS.POSTULATION_SPORTS.BASE, data);
+      return response.data?.data ?? response.data;
     } catch (error) {
       console.error('Error creating postulation sport:', error);
       throw error;
     }
   },
 
-  // Crear logro deportivo
-  createSportsAchievement: async (data: CreateSportsAchievementData): Promise<any> => {
+  // Crear logro deportivo (SportsAchievement) y vincularlo al PostulationSport
+  createSportsAchievementWithLink: async (postulationSportId: string, data: CreateSportsAchievementData & { file?: File | null }): Promise<any> => {
     try {
-      const response = await api.post(API_ENDPOINTS.SPORTS_ACHIEVEMENTS.BASE, data);
-      return response.data;
-    } catch (error) {
-      console.error('Error creating sports achievement:', error);
-      throw error;
-    }
-  },
+      // 1. Crear el logro deportivo
+      // El puntaje lo asignará posteriormente un administrador; enviamos 0 como placeholder
+      const achievementPayload = {
+        sport_competition_category_id: data.competition_category_id,
+        competition_hierarchy_id: data.competition_hierarchy_id,
+        score: 0,
+      };
+      console.log('[SportsService] Payload crear achievement:', achievementPayload);
+      const achievementResp = await api.post(API_ENDPOINTS.SPORTS_ACHIEVEMENTS.BASE, achievementPayload);
+      const achievementId = achievementResp.data?.data?.id || achievementResp.data?.id;
+      console.log('[SportsService] Respuesta crear achievement:', achievementResp.data);
 
-  // Subir documento adjunto
-  uploadAttachedDocument: async (data: UploadAttachedDocumentData): Promise<any> => {
-    try {
+      if (!achievementId) throw new Error('No se pudo crear el logro');
+
+      // 2. Vincular al PostulationSport y subir certificado (si existe)
       const formData = new FormData();
-      formData.append('sports_achievement_id', data.sports_achievement_id);
-      formData.append('attached_document_type_id', data.attached_document_type_id);
-      formData.append('file', data.file);
-
-      const response = await api.post(API_ENDPOINTS.ATTACHED_DOCUMENTS.BASE, formData, {
+      formData.append('postulation_sport_id', postulationSportId);
+      formData.append('sport_achievement_id', achievementId);
+      if (data.file) {
+        formData.append('file', data.file);
+      }
+      console.log('[SportsService] Vinculando achievement. postulationSportId:', postulationSportId, 'achievementId:', achievementId, 'file?', !!data.file);
+      const linkResp = await api.post(API_ENDPOINTS.POSTULATION_SPORT_ACHIEVEMENTS.BASE, formData, {
         headers: {
-          'Content-Type': 'multipart/form-data',
-        },
+          'Content-Type': 'multipart/form-data'
+        }
       });
-      return response.data;
-    } catch (error) {
-      console.error('Error uploading attached document:', error);
+      console.log('[SportsService] Respuesta vínculo achievement:', linkResp.data);
+      return linkResp.data?.data ?? linkResp.data;
+    } catch (error: any) {
+      if (error.response) {
+        console.error('[SportsService] Error 400 detalle:', error.response.data);
+      }
+      console.error('Error creando/vinculando logro:', error);
       throw error;
     }
   },
@@ -247,5 +257,36 @@ export const sportsService = {
       console.error('Error deleting sports achievement:', error);
       throw error;
     }
-  }
+  },
+
+  // Crear logro deportivo sin vincular (uso genérico)
+  createSportsAchievement: async (data: CreateSportsAchievementData): Promise<any> => {
+    try {
+      const response = await api.post(API_ENDPOINTS.SPORTS_ACHIEVEMENTS.BASE, data);
+      return response.data?.data ?? response.data;
+    } catch (error) {
+      console.error('Error creating sports achievement:', error);
+      throw error;
+    }
+  },
+
+  // Subir documento adjunto (fallback utilitario)
+  uploadAttachedDocument: async (data: UploadAttachedDocumentData): Promise<any> => {
+    try {
+      const formData = new FormData();
+      formData.append('sports_achievement_id', data.sports_achievement_id);
+      formData.append('attached_document_type_id', data.attached_document_type_id);
+      formData.append('file', data.file);
+
+      const response = await api.post(API_ENDPOINTS.ATTACHED_DOCUMENTS.BASE, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      return response.data?.data ?? response.data;
+    } catch (error) {
+      console.error('Error uploading attached document:', error);
+      throw error;
+    }
+  },
 }; 

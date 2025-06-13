@@ -1,105 +1,135 @@
-import axiosInstance from '../api/axios';
-import { AthleteDTO, ApiResponse } from '../types/dtos';
-import { isAxiosError } from 'axios';
+import axios from 'axios';
+import { AxiosError } from 'axios';
+import { Athlete } from '../types/auth.types';
 import API_ENDPOINTS from '../api/endpoints';
+import { authService } from './auth.service';
+import { api } from '@/lib/axios';
 
-export interface CreateAthleteDTO {
-  name: string;
-  last_name: string;
-  birth_date: Date;
-  document_type_id: string;
-  document_number: string;
-  gender_id: string;
-  address: string;
-  city: string;
-  state: string;
-  country: string;
-  email: string;
-  phone: string;
+export interface PostulationDTO {
+  id: string;
+  athlete_id: string;
+  semester_id: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
 }
 
-const ENDPOINTS = {
-  ATHLETES: '/athletes'
-} as const;
+class AthletesService {
+  private readonly API_URL = `${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/spotsu/api/v1/athletes`;
 
-export const athletesService = {
-  async registerPersonalData(data: any): Promise<any> {
+  async createAthlete(athleteData: any): Promise<Athlete> {
     try {
-      // Asegurarse de que birthDate sea un objeto Date válido
-      let birthDate: string;
-      try {
-        if (data.birthDate instanceof Date) {
-          birthDate = data.birthDate.toISOString().split('T')[0];
-        } else if (typeof data.birthDate === 'string') {
-          birthDate = new Date(data.birthDate).toISOString().split('T')[0];
-        } else {
-          throw new Error('Formato de fecha inválido');
-        }
-      } catch (error) {
-        console.error('Error al procesar la fecha:', error);
-        throw new Error('La fecha de nacimiento es inválida');
-      }
-
-      // Formatear los datos según el DTO del backend
-      const formattedData = {
-        name: data.name?.trim() || '',
-        last_name: data.lastName?.trim() || '',
-        birth_date: birthDate,
-        document_type_id: data.documentType,
-        document_number: data.documentNumber?.trim() || '',
-        gender_id: data.sex,
-        city: data.city?.trim() || '',
-        state: data.department?.trim() || '',
-        country: data.country?.trim() || '',
-        address: data.address?.trim() || '',
-        email: data.email?.trim().toLowerCase() || '',
-        phone: data.phone?.trim() || ''
-      };
-
-      console.log('Datos formateados para el backend:', formattedData);
+      const response = await axios.post(this.API_URL, athleteData);
       
-      const response = await axiosInstance.post<ApiResponse<any>>(ENDPOINTS.ATHLETES, formattedData);
-      return response.data.data;
-    } catch (error: any) {
-      console.error('Error al registrar deportista:', error);
-      if (error.response?.data) {
-        console.error('Error detallado:', error.response.data);
-        // Si hay mensajes de error específicos del backend, mostrarlos
-        if (Array.isArray(error.response.data.message)) {
-          throw new Error(error.response.data.message.join(', '));
-        }
-        throw new Error(error.response.data.message || 'Error al registrar deportista');
+      if (response.data.status === 'success') {
+        return response.data.data;
       }
-      throw new Error(error.message || 'Error al conectar con el servidor');
+      throw new Error(response.data.message || 'Error al crear atleta');
+    } catch (error) {
+      console.error('Error al crear atleta:', error);
+      throw error;
     }
-  },
+  }
 
-  async getAthletes(): Promise<AthleteDTO[]> {
-    const response = await axiosInstance.get<ApiResponse<AthleteDTO[]>>(API_ENDPOINTS.ATHLETES.BASE);
+  async getAthletes(): Promise<Athlete[]> {
+    const response = await axios.get(this.API_URL);
     return response.data.data;
-  },
+  }
 
-  async getAthlete(id: string): Promise<AthleteDTO> {
-    const response = await axiosInstance.get<ApiResponse<AthleteDTO>>(API_ENDPOINTS.ATHLETES.BY_ID(id));
-    return response.data.data;
-  },
+  async getAthleteByDocument(documentNumber: string): Promise<Athlete | null> {
+    try {
+      // Obtener el usuario actual del token
+      const currentUser = await authService.getCurrentUser();
+      
+      if (!currentUser) {
+        throw new Error('No hay usuario autenticado');
+      }
 
-  async updateAthlete(id: string, dto: Partial<CreateAthleteDTO>): Promise<AthleteDTO> {
-    // Si hay una fecha en el DTO, asegurarse de que se envíe en el formato correcto
-    if (dto.birth_date) {
-      const formattedDto = {
-        ...dto,
-        birth_date: dto.birth_date.toISOString().split('T')[0]
-      };
-      const response = await axiosInstance.patch<ApiResponse<AthleteDTO>>(API_ENDPOINTS.ATHLETES.BY_ID(id), formattedDto);
+      // Verificar que el número de documento coincida con el usuario autenticado
+      if (currentUser.document_number !== documentNumber) {
+        throw new Error('No autorizado para acceder a este atleta');
+      }
+
+      // Obtener todos los atletas
+      const response = await axios.get(`${this.API_URL}`);
+      
+      if (response.data.status === 'success' && response.data.data) {
+        // Buscar el atleta que coincida con el documento del usuario
+        const athletes = response.data.data;
+        const userAthlete = athletes.find((athlete: Athlete) => 
+          athlete.document_number === documentNumber
+        );
+
+        console.log('Atleta encontrado para el usuario:', userAthlete);
+        return userAthlete || null;
+      }
+      return null;
+    } catch (error) {
+      if (error instanceof AxiosError && error.response?.status === 404) {
+        return null;
+      }
+      console.error('Error al buscar atleta:', error);
+      return null;
+    }
+  }
+
+  async getAthleteByPersonId(personId: string): Promise<Athlete | null> {
+    try {
+      const response = await axios.get(`${this.API_URL}/person/${personId}`);
       return response.data.data;
+    } catch (error) {
+      if (error instanceof AxiosError && error.response?.status === 404) {
+        return null;
+      }
+      throw error;
     }
-    
-    const response = await axiosInstance.patch<ApiResponse<AthleteDTO>>(API_ENDPOINTS.ATHLETES.BY_ID(id), dto);
+  }
+
+  async updateAthlete(id: string, data: any): Promise<Athlete> {
+    const response = await axios.patch(`${this.API_URL}/${id}`, data);
     return response.data.data;
-  },
+  }
 
   async deleteAthlete(id: string): Promise<void> {
-    await axiosInstance.delete<ApiResponse<void>>(API_ENDPOINTS.ATHLETES.BY_ID(id));
+    await axios.delete(`${this.API_URL}/${id}`);
   }
-}; 
+
+  async createPostulation(athleteId: string): Promise<any> {
+    try {
+      const response = await axios.post(`${this.API_URL}/${athleteId}/postulations`);
+      if (response.data.status === 'success') {
+        return response.data.data;
+      }
+      throw new Error(response.data.message || 'Error al crear postulación');
+    } catch (error) {
+      console.error('Error al crear postulación:', error);
+      throw error;
+    }
+  }
+
+  async getPostulations(athleteId: string): Promise<PostulationDTO[]> {
+    if (!athleteId) {
+      throw new Error('El ID del atleta es requerido');
+    }
+    const response = await api.get(`/postulations/athlete/${athleteId}`);
+    return response.data.data;
+  }
+
+  async getActivePostulation(athleteId: string): Promise<PostulationDTO | null> {
+    if (!athleteId) {
+      throw new Error('El ID del atleta es requerido');
+    }
+    try {
+      const response = await api.get(`/postulations/athlete/${athleteId}`);
+      const postulations: PostulationDTO[] = response.data.data || [];
+      return postulations.find(p => p.status === 'active') || null;
+    } catch (error) {
+      if (error instanceof AxiosError && error.response?.status === 404) {
+        return null;
+      }
+      throw error;
+    }
+  }
+}
+
+export const athletesService = new AthletesService(); 

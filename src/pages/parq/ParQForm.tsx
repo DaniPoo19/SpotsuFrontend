@@ -1,13 +1,15 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 import { parqService } from '../../services/parq.service';
-import { ParQQuestion } from '../../types/dtos';
+import { ParQQuestion } from '../../types/parq';
 import { useAuth } from '../../contexts/AuthContext';
+import { postulationService } from '../../services/postulation.service';
 
 export const ParQForm = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { user } = useAuth();
   const [questions, setQuestions] = useState<ParQQuestion[]>([]);
   const [answers, setAnswers] = useState<Record<string, boolean | null>>({});
@@ -15,16 +17,48 @@ export const ParQForm = () => {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [currentQuestion, setCurrentQuestion] = useState(0);
+  const [postulationId, setPostulationId] = useState<string>('');
+  const [initialized, setInitialized] = useState(false);
 
-  useEffect(() => {
-    loadQuestions();
-  }, []);
+  const initializeForm = useCallback(async () => {
+    if (initialized) return;
+    
+    const token = localStorage.getItem('auth_token');
+    if (!token) {
+      toast.error('Debe iniciar sesión para continuar');
+      navigate('/login');
+      return;
+    }
 
-  const loadQuestions = async () => {
+    if (!user?.id) {
+      toast.error('No se encontró la información del usuario');
+      navigate('/login');
+      return;
+    }
+
     try {
       setLoading(true);
-      const questionsData = await parqService.getQuestions();
+      setError('');
       
+      const urlPostulationId = searchParams.get('postulationId');
+      if (!urlPostulationId) {
+        toast.error('No se encontró el ID de la postulación');
+        navigate('/user-dashboard/postulations');
+        return;
+      }
+
+      setPostulationId(urlPostulationId);
+
+      // Verificar si ya completó el PARQ
+      const isCompleted = await parqService.checkParQCompletion(urlPostulationId);
+      if (isCompleted) {
+        toast.success('Ya has completado el cuestionario PARQ');
+        navigate(`/user-dashboard/postulations/${urlPostulationId}`);
+        return;
+      }
+
+      // Cargar preguntas
+      const questionsData = await parqService.getParQQuestions();
       if (!Array.isArray(questionsData) || questionsData.length === 0) {
         throw new Error('No se pudieron cargar las preguntas');
       }
@@ -35,13 +69,26 @@ export const ParQForm = () => {
         return acc;
       }, {} as Record<string, boolean | null>);
       setAnswers(initialAnswers);
+      setInitialized(true);
     } catch (error: any) {
-      setError(error.message);
-      toast.error('Error al cargar las preguntas');
+      console.error('Error al inicializar el formulario PAR-Q:', error);
+      if (error.response?.status === 401) {
+        toast.error('Su sesión ha expirado. Por favor, inicie sesión nuevamente.');
+        navigate('/login');
+        return;
+      }
+      setError(error.message || 'Error al cargar el formulario');
+      toast.error(error.message || 'Error al cargar el formulario');
     } finally {
       setLoading(false);
     }
-  };
+  }, [user, navigate, searchParams, initialized]);
+
+  useEffect(() => {
+    if (!initialized) {
+      initializeForm();
+    }
+  }, [initializeForm, initialized]);
 
   const setAnswer = (questionId: string, answer: boolean) => {
     setAnswers(prev => ({
@@ -53,11 +100,10 @@ export const ParQForm = () => {
   const validateForm = () => {
     return questions.every(q => answers[q.id] !== null);
   };
+
   const handleSaveAnswer = async () => {
     const actualQuestion = questions[currentQuestion];
     const answer = answers[actualQuestion.id];
-
-    console.log({actualQuestion, answer});
 
     if(answer === null){
       toast.error('Por favor responda la pregunta');
@@ -67,38 +113,87 @@ export const ParQForm = () => {
     if(currentQuestion < questions.length - 1){
       setCurrentQuestion(prev => prev + 1);
     }
-  }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
 
-    if (!validateForm()) {
-      setError('Por favor responda todas las preguntas');
+    if (!postulationId) {
+      toast.error('No se encontró el ID de la postulación');
+      navigate('/user-dashboard/postulations');
       return;
     }
 
-    setSubmitting(true);
     try {
-      // Asumimos que el postulation_id es el ID del usuario actual
-      const postulationId = user?.id || '';
-      if (!postulationId) {
-        throw new Error('No se pudo identificar al usuario');
+      setSubmitting(true);
+      setError('');
+
+      // Validar que todas las preguntas tengan respuesta
+      const totalQuestions = questions.length;
+      const answeredQuestions = Object.values(answers).filter(answer => answer !== null).length;
+
+      if (answeredQuestions !== totalQuestions) {
+        setError(`Por favor, responde todas las preguntas antes de enviar (${answeredQuestions}/${totalQuestions})`);
+        toast.error(`Por favor, responde todas las preguntas (${answeredQuestions}/${totalQuestions})`);
+        return;
       }
 
-      const response = await parqService.submitAnswers(postulationId, answers as Record<string, boolean>);
+      // Convertir respuestas a boolean
+      const formattedAnswers: Record<string, boolean> = {};
+      Object.entries(answers).forEach(([questionId, answer]) => {
+        if (answer !== null) {
+          formattedAnswers[questionId] = answer;
+        }
+      });
+
+      // Verificar si existe al menos una respuesta positiva
+      const hasPositiveResponse = Object.values(formattedAnswers).some(v => v === true);
+
+      console.log('[PAR-Q Form] Enviando respuestas:', {
+        postulationId,
+        answers: formattedAnswers
+      });
+
+      // Enviar respuestas
+      await parqService.submitParQResponses(postulationId, formattedAnswers);
       
-      if (response.requiresMedicalClearance) {
-        toast('Se recomienda consultar con un profesional de la salud antes de comenzar la actividad física', {
-          icon: '⚠️'
-        });
+      // Verificar que las respuestas se guardaron correctamente
+      const isComplete = await parqService.checkParQCompletion(postulationId);
+      console.log('[PAR-Q Form] Verificación de completitud:', {
+        postulationId,
+        isComplete
+      });
+
+      if (isComplete) {
+        try {
+          // Sólo actualizamos estado PAR-Q si NO hubo respuestas positivas
+          if (!hasPositiveResponse) {
+            await postulationService.updateParQCompletion(postulationId);
+          }
+          
+          // Obtener la postulación actualizada para verificar el cambio
+          const updatedPostulation = await postulationService.getPostulationById(postulationId);
+          console.log('[PAR-Q Form] Estado final de la postulación:', {
+            postulationId,
+            parqCompleted: updatedPostulation.par_q_completed,
+            status: updatedPostulation.status
+          });
+
+          toast.success('¡Cuestionario PAR-Q completado exitosamente!');
+          navigate(`/user-dashboard/postulations/${postulationId}`);
+        } catch (updateError: any) {
+          console.error('[PAR-Q Form] Error al actualizar estado:', updateError);
+          toast.success('Cuestionario guardado correctamente');
+          toast.error('Se guardaron las respuestas pero hubo un problema al actualizar el estado. Por favor, contacta al soporte si el problema persiste.');
+          navigate(`/user-dashboard/postulations/${postulationId}`);
+        }
       } else {
-        toast.success('¡Cuestionario completado exitosamente!');
+        throw new Error('No se pudieron verificar todas las respuestas del PAR-Q');
       }
-      
-      navigate('/dashboard');
     } catch (error: any) {
-      setError(error.message);
-      toast.error('Error al enviar las respuestas');
+      console.error('[PAR-Q Form] Error al enviar respuestas:', error);
+      setError(error.message || 'Error al enviar las respuestas');
+      toast.error(error.message || 'Error al enviar las respuestas');
     } finally {
       setSubmitting(false);
     }
@@ -131,7 +226,7 @@ export const ParQForm = () => {
             <motion.button
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
-              onClick={loadQuestions}
+              onClick={() => window.location.reload()}
               className="px-6 py-2 bg-[#006837] text-white rounded-lg hover:bg-[#005828] transition-colors"
             >
               Intentar nuevamente
@@ -169,7 +264,7 @@ export const ParQForm = () => {
             </div>
           </div>
 
-          <div className="space-y-6">
+          <form onSubmit={handleSubmit} className="space-y-6">
             <AnimatePresence mode="wait">
               <motion.div
                 key={currentQuestion}
@@ -242,8 +337,8 @@ export const ParQForm = () => {
                 <motion.button
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
-                  disabled={answers[questions[currentQuestion].id] === null}
-                  onClick={() => handleSaveAnswer()}
+                  type="submit"
+                  disabled={!validateForm() || submitting}
                   className="px-8 py-3 bg-[#006837] text-white rounded-lg hover:bg-[#005828] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {submitting ? (
@@ -257,7 +352,7 @@ export const ParQForm = () => {
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                   type="button"
-                  onClick={() => handleSaveAnswer()}
+                  onClick={handleSaveAnswer}
                   disabled={answers[questions[currentQuestion].id] === null}
                   className="px-6 py-2 bg-[#006837] text-white rounded-lg hover:bg-[#005828] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
@@ -265,7 +360,7 @@ export const ParQForm = () => {
                 </motion.button>
               )}
             </div>
-          </div>
+          </form>
         </motion.div>
       </div>
     </div>

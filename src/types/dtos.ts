@@ -73,8 +73,22 @@ export interface CreatePersonDTO {
 }
 
 // Athlete DTOs
-export interface AthleteDTO extends PersonDTO {
-  // Campos adicionales específicos de atletas, si los hay
+export interface AthleteDTO {
+  id: string;
+  name: string;
+  last_name?: string;
+  email: string;
+  document_number?: string;
+  document_type?: {
+    id: string;
+    name: string;
+  };
+  city?: string;
+  state?: string;
+  country?: string;
+  address?: string;
+  phone?: string;
+  // otros campos según sea necesario
 }
 
 export interface CreateAthleteDTO extends CreatePersonDTO {
@@ -197,9 +211,15 @@ export interface ParQQuestion {
   id: string;
   question: string;
   description?: string;
+  order: number;
 }
 
 export interface ParQResponseDto {
+  question_id: string;
+  response: boolean | null;
+}
+
+export interface ParQResponseSubmitDto {
   postulation_id: string;
   question_id: string;
   response: boolean;
@@ -361,4 +381,51 @@ export interface FormValues {
     consentForm?: File | null;
     MedicCertificate?: File | null;
   };
+}
+
+export interface User {
+  id: string;
+  name: string;
+  lastname: string;
+  email: string;
+  person_id: string | null;
+  role_id: string;
+}
+
+export interface SemesterDTO {
+  id: string;
+  name: string;
+  // ... otros campos del semestre
+}
+
+export interface PostulationDTO {
+  id: string;
+  athlete_id: string;
+  status: 'pending' | 'active' | 'completed' | 'cancelled';
+  par_q_completed: boolean;
+  sports_history_completed: boolean;
+  created_at: string;
+  updated_at: string;
+  athlete?: {
+    id: string;
+    name?: string;
+    last_name?: string;
+    document_number?: string;
+    // otros campos según necesidad
+  };
+  semester?: {
+    id: string;
+    name?: string;
+  };
+  personal_info_completed?: boolean;
+  documents_completed?: boolean;
+}
+
+export interface ParQResponseDTO {
+  id: string;
+  postulation_id: string;
+  question_id: string;
+  response: boolean;
+  created_at?: Date;
+  updated_at?: Date;
 } 

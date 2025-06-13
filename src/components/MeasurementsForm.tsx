@@ -2,7 +2,7 @@ import React from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { Calculator, Ruler, Scale, Dumbbell, Heart, Brain, Bone, Timer } from 'lucide-react';
+import { Calculator } from 'lucide-react';
 
 import {
   Form,
@@ -13,9 +13,6 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
-import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Separator } from '@/components/ui/separator';
 
 const formSchema = z.object({
   height: z.number().min(0, 'La altura debe ser mayor a 0'),
@@ -33,50 +30,6 @@ interface MeasurementsFormProps {
   onCancel: () => void;
   initialData?: z.infer<typeof formSchema>;
 }
-
-const MeasurementInput = ({ 
-  icon: Icon, 
-  label, 
-  name, 
-  control, 
-  placeholder, 
-  unit 
-}: { 
-  icon: any, 
-  label: string, 
-  name: keyof z.infer<typeof formSchema>, 
-  control: any, 
-  placeholder: string,
-  unit: string 
-}) => (
-  <FormField
-    control={control}
-    name={name}
-    render={({ field }) => (
-      <FormItem>
-        <FormLabel className="text-[#006837] font-medium">{label}</FormLabel>
-        <FormControl>
-          <div className="relative">
-            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">
-              <Icon size={18} />
-            </div>
-            <Input
-              type="number"
-              placeholder={placeholder}
-              {...field}
-              onChange={e => field.onChange(parseFloat(e.target.value))}
-              className="h-12 pl-10 pr-12 bg-white border-gray-200 focus:border-[#006837] focus:ring-[#006837]/20"
-            />
-            <div className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">
-              {unit}
-            </div>
-          </div>
-        </FormControl>
-        <FormMessage className="text-red-500" />
-      </FormItem>
-    )}
-  />
-);
 
 export const MeasurementsForm = ({ onSubmit, onCancel, initialData }: MeasurementsFormProps) => {
   const form = useForm<z.infer<typeof formSchema>>({
@@ -108,135 +61,227 @@ export const MeasurementsForm = ({ onSubmit, onCancel, initialData }: Measuremen
     return 'Obesidad';
   };
 
-  const getBMIColor = (bmi: number): string => {
-    if (bmi < 18.5) return 'text-yellow-500';
-    if (bmi < 25) return 'text-[#006837]';
-    if (bmi < 30) return 'text-orange-500';
-    return 'text-red-500';
-  };
-
   const bmi = calculateBMI();
 
   return (
-    <Card className="w-full max-w-2xl border-none shadow-lg">
-      <CardHeader className="bg-[#006837] text-white rounded-t-lg">
-        <div className="flex items-center gap-3">
-          <div className="p-3 rounded-xl bg-white/20">
-            <Calculator size={24} />
-          </div>
-          <CardTitle>Registrar Medidas Físicas</CardTitle>
+    <div className="bg-white rounded-2xl p-8 w-full max-w-2xl shadow-xl">
+      <div className="flex items-center gap-3 mb-8">
+        <div className="p-3 rounded-xl bg-[#006837] bg-opacity-10">
+          <Calculator size={24} className="text-[#006837]" />
         </div>
-      </CardHeader>
+        <h3 className="text-2xl font-bold text-gray-900">Registrar Medidas Físicas</h3>
+      </div>
 
-      <CardContent className="p-6">
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
-            <div className="grid grid-cols-2 gap-6">
-              <MeasurementInput
-                icon={Ruler}
-                label="Altura"
-                name="height"
-                control={form.control}
-                placeholder="0.0"
-                unit="cm"
-              />
-              <MeasurementInput
-                icon={Scale}
-                label="Peso"
-                name="weight"
-                control={form.control}
-                placeholder="0.0"
-                unit="kg"
-              />
+      <Form {...form}>
+        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+          <div className="grid grid-cols-2 gap-6">
+            <FormField
+              control={form.control}
+              name="height"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Altura (cm)</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="number"
+                      placeholder="0.0"
+                      {...field}
+                      onChange={e => field.onChange(parseFloat(e.target.value))}
+                      className="focus-visible:ring-[#006837]"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="weight"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Peso (kg)</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="number"
+                      placeholder="0.0"
+                      {...field}
+                      onChange={e => field.onChange(parseFloat(e.target.value))}
+                      className="focus-visible:ring-[#006837]"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
+
+          <div className="bg-gray-50 p-6 rounded-xl">
+            <div className="flex justify-between items-center">
+              <div>
+                <p className="text-sm font-medium text-gray-700">IMC</p>
+                <p className="text-3xl font-bold text-[#006837]">{bmi}</p>
+              </div>
+              <div className="text-right">
+                <p className="text-sm font-medium text-gray-700">Categoría</p>
+                <p className="text-xl font-semibold text-[#006837]">{getBMICategory(bmi)}</p>
+              </div>
             </div>
+          </div>
 
-            <Card className="bg-gray-50 border border-gray-100">
-              <CardContent className="p-6">
-                <div className="flex justify-between items-center">
-                  <div>
-                    <p className="text-sm font-medium text-gray-600">Índice de Masa Corporal</p>
-                    <p className={`text-3xl font-bold ${getBMIColor(bmi)}`}>{bmi}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-medium text-gray-600">Categoría</p>
-                    <p className={`text-xl font-semibold ${getBMIColor(bmi)}`}>{getBMICategory(bmi)}</p>
-                  </div>
+          <div className="grid grid-cols-2 gap-6">
+            <FormField
+              control={form.control}
+              name="muscularMass"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Masa Muscular (kg)</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="number"
+                      placeholder="0.0"
+                      {...field}
+                      onChange={e => field.onChange(parseFloat(e.target.value))}
+                      className="focus-visible:ring-[#006837]"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="fatMass"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Masa Grasa (%)</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="number"
+                      placeholder="0.0"
+                      {...field}
+                      onChange={e => field.onChange(parseFloat(e.target.value))}
+                      className="focus-visible:ring-[#006837]"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="visceralFat"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Grasa Visceral (%)</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="number"
+                      placeholder="0.0"
+                      {...field}
+                      onChange={e => field.onChange(parseFloat(e.target.value))}
+                      className="focus-visible:ring-[#006837]"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="metabolicAge"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Edad Metabólica (años)</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="number"
+                      placeholder="0"
+                      {...field}
+                      onChange={e => field.onChange(parseFloat(e.target.value))}
+                      className="focus-visible:ring-[#006837]"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="boneMass"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Masa Ósea (kg)</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="number"
+                      placeholder="0.0"
+                      {...field}
+                      onChange={e => field.onChange(parseFloat(e.target.value))}
+                      className="focus-visible:ring-[#006837]"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="pailerTest"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Test de Pailer-Léger (nivel)</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="number"
+                      placeholder="0.0"
+                      {...field}
+                      onChange={e => field.onChange(parseFloat(e.target.value))}
+                      className="focus-visible:ring-[#006837]"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
+
+          <div className="mt-8 space-y-6">
+            <div className="bg-gray-50 p-6 rounded-xl">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-lg font-semibold text-gray-900 mb-1">Puntaje Total</h4>
+                  <p className="text-sm text-gray-600">Calificación basada en medidas físicas</p>
                 </div>
-              </CardContent>
-            </Card>
-
-            <Separator className="bg-gray-200" />
-
-            <div className="grid grid-cols-2 gap-6">
-              <MeasurementInput
-                icon={Dumbbell}
-                label="Masa Muscular"
-                name="muscularMass"
-                control={form.control}
-                placeholder="0.0"
-                unit="kg"
-              />
-              <MeasurementInput
-                icon={Heart}
-                label="Masa Grasa"
-                name="fatMass"
-                control={form.control}
-                placeholder="0.0"
-                unit="%"
-              />
-              <MeasurementInput
-                icon={Heart}
-                label="Grasa Visceral"
-                name="visceralFat"
-                control={form.control}
-                placeholder="0.0"
-                unit="%"
-              />
-              <MeasurementInput
-                icon={Brain}
-                label="Edad Metabólica"
-                name="metabolicAge"
-                control={form.control}
-                placeholder="0"
-                unit="años"
-              />
-              <MeasurementInput
-                icon={Bone}
-                label="Masa Ósea"
-                name="boneMass"
-                control={form.control}
-                placeholder="0.0"
-                unit="kg"
-              />
-              <MeasurementInput
-                icon={Timer}
-                label="Test de Pailer-Léger"
-                name="pailerTest"
-                control={form.control}
-                placeholder="0.0"
-                unit="nivel"
-              />
+                <div className="bg-white px-6 py-3 rounded-lg shadow-sm">
+                  <span className="text-3xl font-bold text-[#006837]">85</span>
+                  <span className="text-gray-600 text-sm ml-1">pts</span>
+                </div>
+              </div>
             </div>
 
-            <CardFooter className="flex justify-end gap-4 pt-6 border-t border-gray-100">
-              <Button
+            <div className="flex items-center justify-end gap-4 pt-6 border-t">
+              <button
                 type="button"
-                variant="outline"
                 onClick={onCancel}
-                className="border-gray-200 hover:bg-gray-50"
+                className="px-6 py-2.5 border border-gray-200 rounded-xl text-gray-700 hover:bg-gray-50 hover:text-gray-900 font-medium transition-all"
               >
                 Cancelar
-              </Button>
-              <Button
+              </button>
+              <button
                 type="submit"
-                className="bg-[#006837] hover:bg-[#005229]"
+                className="px-8 py-2.5 bg-[#006837] text-white rounded-xl hover:bg-[#005828] transition-colors font-medium flex items-center gap-2 shadow-sm hover:shadow-md"
               >
-                Guardar
-              </Button>
-            </CardFooter>
-          </form>
-        </Form>
-      </CardContent>
-    </Card>
+                <span>Guardar Medidas</span>
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+                  <polyline points="17 21 17 13 7 13 7 21"/>
+                  <polyline points="7 3 7 8 15 8"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+        </form>
+      </Form>
+    </div>
   );
 };

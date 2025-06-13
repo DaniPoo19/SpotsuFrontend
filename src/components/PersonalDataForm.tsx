@@ -29,8 +29,14 @@ import {
   Building, 
   Globe, 
   FileText, 
-  Hash 
+  Hash, 
+  Loader2 
 } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
+import { motion } from 'framer-motion';
+import { jwtDecode } from 'jwt-decode';
+import axios from 'axios';
+import { peopleService } from '../services/people.service';
 
 // Registrar el locale español
 registerLocale('es', es);
@@ -127,8 +133,34 @@ const parqQuestions = [
   '¿Conoce alguna razón por la cual no debería realizar actividad física?'
 ];
 
+interface JwtPayload {
+  sub: string;
+  personId: string;
+  email: string;
+  role: string;
+  exp: number;
+}
+
+interface ApiResponse<T> {
+  status: string;
+  message: string;
+  data: T;
+}
+
+interface TokenPayload {
+  name?: string;
+  lastname?: string;
+  last_name?: string;
+  document_type_id?: string;
+  document_type?: string;
+  document_number?: string;
+  [key: string]: any;
+}
+
 export const PersonalDataForm = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  console.log('User from context:', user);
   const [selectedDepartment, setSelectedDepartment] = useState("");
   const [filteredCountries, setFilteredCountries] = useState(paises);
   const [filteredCities, setFilteredCities] = useState<string[]>([]);
@@ -137,24 +169,105 @@ export const PersonalDataForm = () => {
   const [genders, setGenders] = useState<GenderDTO[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [athleteId, setAthleteId] = useState<string | null>(null);
+  const [userDocumentTypeId, setUserDocumentTypeId] = useState<string | null>(null);
+  const [prefilledName, setPrefilledName] = useState<string>('');
+  const [prefilledLastName, setPrefilledLastName] = useState<string>('');
+
+  // Obtener document_type (puede venir como id o como nombre) desde user o localStorage
+  const storedUser = localStorage.getItem('user_data');
+  let initialDocumentType: string = '';
+  if (user?.document_type) {
+    initialDocumentType = user.document_type;
+  } else if (storedUser) {
+    try {
+      const parsed = JSON.parse(storedUser);
+      if (parsed.document_type) initialDocumentType = parsed.document_type;
+    } catch (e) {
+      console.warn('No se pudo parsear user_data al inicializar formulario');
+    }
+  }
 
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      name: "",
-      lastName: "",
+      name: user?.name || '',
+      lastName: user?.last_name || '',
       birthDate: undefined,
-      sex: "",
-      documentType: "",
-      documentNumber: "",
-      address: "",
-      city: "",
-      department: "",
-      country: "",
-      email: "",
-      phone: ""
+      sex: '',
+      documentType: initialDocumentType,
+      documentNumber: user?.document_number || '',
+      address: '',
+      city: '',
+      department: '',
+      country: 'Colombia',
+      email: '',
+      phone: ''
     },
   });
+
+  // Al montar el componente, decodificar el token para obtener datos básicos
+  useEffect(() => {
+    const token = localStorage.getItem('auth_token');
+    if (token) {
+      try {
+        const payload = jwtDecode<TokenPayload>(token);
+        console.log('Token payload:', payload);
+        
+        // Intentar obtener el tipo de documento del token
+        const storedUserData = localStorage.getItem('user_data');
+        if (storedUserData) {
+          const userData = JSON.parse(storedUserData);
+          console.log('Stored user data:', userData);
+          
+          if (userData.document_type) {
+            console.log('Document type from stored user data:', userData.document_type);
+            setUserDocumentTypeId(userData.document_type || '');
+          }
+        }
+
+        if (payload.name) {
+          setPrefilledName(payload.name || '');
+        }
+        if (payload.lastname || payload.last_name) {
+          setPrefilledLastName((payload.lastname || payload.last_name) || '');
+        }
+      } catch (error) {
+        console.error('Error decoding token:', error);
+      }
+    }
+  }, []);
+
+  // Verificar si el usuario ya tiene un atleta asociado
+  useEffect(() => {
+    const checkAthlete = async () => {
+      if (!user?.document_number) {
+        toast.error('No se encontró información del usuario');
+        navigate('/login');
+        return;
+      }
+
+      try {
+        // Intentamos obtener el atleta por su número de documento
+        const athlete = await athletesService.getAthleteByDocument(user.document_number);
+        
+        if (athlete) {
+          setAthleteId(athlete.id);
+          // Si ya existe el atleta, redirigir al dashboard
+          navigate('/user-dashboard');
+          return;
+        }
+
+        // Si no encontramos el atleta, continuamos con el formulario
+        console.log('Usuario no tiene atleta asociado');
+      } catch (error) {
+        console.error('Error al verificar atleta:', error);
+        toast.error('Error al verificar datos del usuario');
+      }
+    };
+
+    checkAthlete();
+  }, [user, navigate]);
 
   useEffect(() => {
     const loadMasterData = async () => {
@@ -162,80 +275,136 @@ export const PersonalDataForm = () => {
         setIsLoading(true);
         setLoadError(null);
         
-        console.log('Cargando datos maestros...');
-        const [docTypes, genderList] = await Promise.all([
-          mastersService.getDocumentTypes(),
-          mastersService.getGenders()
+        // Obtener tipos de documento y géneros
+        const [documentTypesResponse, gendersResponse] = await Promise.all([
+          axiosInstance.get<ApiResponse<DocumentTypeDTO[]>>(API_ENDPOINTS.MASTERS.DOCUMENT_TYPES),
+          axiosInstance.get<ApiResponse<GenderDTO[]>>(API_ENDPOINTS.MASTERS.GENDERS)
         ]);
-        
-        console.log('Tipos de documento:', docTypes);
-        console.log('Géneros:', genderList);
-        
+
+        console.log('Document types loaded:', documentTypesResponse.data);
+        const docTypes = documentTypesResponse.data.data;
         setDocumentTypes(docTypes);
-        setGenders(genderList);
-      } catch (error) {
-        console.error('Error al cargar datos maestros:', error);
-        const errorMessage = error instanceof Error ? error.message : 'Error desconocido';
-        setLoadError(`Error al cargar datos maestros: ${errorMessage}`);
-        toast.error('Error al cargar datos maestros. Por favor, intente nuevamente.');
-      } finally {
+        setGenders(gendersResponse.data.data);
+
+        // Intentar obtener el tipo de documento del usuario
+        const storedUserData = localStorage.getItem('user_data');
+        if (storedUserData) {
+          const userData = JSON.parse(storedUserData);
+          console.log('Trying to set document type from stored user data:', userData);
+          
+          if (userData.document_type) {
+            // Buscar por ID o por nombre
+            const matchingDocType = docTypes.find(
+              dt => dt.id === userData.document_type || dt.name === userData.document_type
+            );
+            
+            console.log('Matching document type found:', matchingDocType);
+            if (matchingDocType) {
+              form.setValue('documentType', matchingDocType.id);
+              console.log('Form values after setting document type:', form.getValues());
+            }
+          }
+        }
+
+        setIsLoading(false);
+      } catch (error: any) {
+        console.error('Error loading master data:', error);
+        setLoadError(error.message || 'Error cargando datos maestros');
         setIsLoading(false);
       }
     };
-    
+
     loadMasterData();
-  }, [navigate]);
+  }, [form]);
 
   useEffect(() => {
     if (selectedDepartment) {
-      setFilteredCities(ciudadesPorDepartamento[selectedDepartment] || []);
+      const cities = ciudadesPorDepartamento[selectedDepartment] || [];
+      setFilteredCities(cities);
     } else {
       setFilteredCities([]);
     }
   }, [selectedDepartment]);
 
   const handleCountrySearch = (value: string) => {
-    const searchTerm = value.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-    const filtered = paises.filter(country => 
-      country.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes(searchTerm)
+    const filtered = paises.filter(pais =>
+      pais.toLowerCase().includes(value.toLowerCase())
     );
     setFilteredCountries(filtered);
   };
 
-  const handleSubmit = async (values: FormData) => {
-    try {
-      setIsSubmitting(true);
-      console.log('Enviando datos al backend:', values);
-      
-      // Asegurarse de que la fecha sea un objeto Date válido
-      if (!(values.birthDate instanceof Date)) {
-        throw new Error('La fecha de nacimiento es inválida');
-      }
+  const handleSubmit = async (data: FormData) => {
+    if (!user?.document_number) {
+      toast.error('No se encontró información del usuario');
+      return;
+    }
 
-      const response = await athletesService.registerPersonalData(values);
-      console.log('Respuesta del backend:', response);
+    setIsSubmitting(true);
+    try {
+      // Crear el atleta
+      const athleteData = {
+        document_type_id: data.documentType,
+        document_number: data.documentNumber,
+        name: data.name,
+        last_name: data.lastName,
+        birth_date: data.birthDate.toISOString(),
+        gender_id: data.sex,
+        address: data.address,
+        city: data.city,
+        state: data.department,
+        country: data.country,
+        email: data.email,
+        phone: data.phone
+      };
+
+      console.log('Creando atleta con datos:', athleteData);
+      const newAthlete = await athletesService.createAthlete(athleteData);
+      console.log('Atleta creado:', newAthlete);
       
-      toast.success('Datos del deportista registrados correctamente');
-      
-      form.reset();
-    } catch (error: any) {
-      console.error('Error al enviar datos:', error);
-      
-      let errorMessage = 'Error al registrar datos del deportista';
-      if (error instanceof Error) {
-        errorMessage = error.message;
+      toast.success('Datos personales registrados correctamente');
+      navigate('/user-dashboard');
+    } catch (error) {
+      console.error('Error al registrar datos personales:', error);
+      if (axios.isAxiosError(error)) {
+        const errorMessage = error.response?.data?.message || 'Error al registrar datos personales';
+        toast.error(errorMessage);
+      } else {
+        toast.error('Error al registrar datos personales. Por favor, intente nuevamente.');
       }
-      
-      toast.error(errorMessage);
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  // Obtener y prellenar nombre y apellido una vez que el usuario esté disponible
+  useEffect(() => {
+    const fillNames = async () => {
+      if (!user?.document_number) return;
+      try {
+        const people = await peopleService.getPeople();
+        const person = people.find(p => p.document_number === user.document_number);
+        if (person) {
+          if (!form.getValues('name')) {
+            form.setValue('name', person.name);
+          }
+          // El servicio podría devolver lastname o last_name
+          const lastNameValue = (person as any).lastname || (person as any).last_name || '';
+          if (!form.getValues('lastName') && lastNameValue) {
+            form.setValue('lastName', lastNameValue);
+          }
+        }
+      } catch (err) {
+        console.error('No se pudo prellenar nombre y apellido:', err);
+      }
+    };
+
+    fillNames();
+  }, [user, form]);
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <p>Cargando formulario...</p>
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#006837]"></div>
       </div>
     );
   }
@@ -246,423 +415,376 @@ export const PersonalDataForm = () => {
         <div className="bg-white p-6 rounded-lg shadow-md max-w-2xl w-full">
           <h2 className="text-xl font-bold text-red-600 mb-4">Error de conexión</h2>
           <p className="text-red-500 mb-6">{loadError}</p>
-          
-          <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6">
-            <div className="flex">
-              <div className="flex-shrink-0">
-                <svg className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                </svg>
-              </div>
-              <div className="ml-3">
-                <p className="text-sm text-yellow-700">
-                  <strong>Importante:</strong> Para que esta aplicación funcione correctamente, el servidor backend debe estar en ejecución.
-                </p>
-                <p className="text-sm text-yellow-700 mt-2">
-                  Asegúrese de que el servidor NestJS esté ejecutándose en <code className="bg-gray-100 px-1 py-0.5 rounded">http://localhost:3000</code> con el prefijo global <code className="bg-gray-100 px-1 py-0.5 rounded">/spotsu/api/v1</code>.
-                </p>
-              </div>
-            </div>
-          </div>
-          
-          <div className="space-y-4">
-            <div className="bg-gray-50 p-4 rounded border border-gray-200">
-              <h3 className="font-medium text-gray-800 mb-2">Pasos para iniciar el servidor backend:</h3>
-              <ol className="list-decimal list-inside space-y-2 text-sm text-gray-700">
-                <li>Abra una terminal en la carpeta del proyecto backend NestJS</li>
-                <li>Ejecute <code className="bg-gray-100 px-1 py-0.5 rounded">npm run start:dev</code> o <code className="bg-gray-100 px-1 py-0.5 rounded">yarn start:dev</code></li>
-                <li>Espere a que el servidor se inicie correctamente (debería ver un mensaje indicando que escucha en puerto 3000)</li>
-                <li>Verifique que no haya errores en la consola del servidor</li>
-                <li>Compruebe que el servidor responde visitando <code className="bg-gray-100 px-1 py-0.5 rounded">http://localhost:3000/spotsu/api/v1/genders</code> en su navegador</li>
-              </ol>
-            </div>
-            
-            <div className="flex flex-col sm:flex-row gap-4">
-              <Button 
-                onClick={() => window.location.reload()} 
-                className="bg-[#006837] hover:bg-[#005828] w-full sm:w-auto"
-              >
-                Reintentar conexión
-              </Button>
-              <Button 
-                onClick={async () => {
-                  try {
-                    // Intentar hacer una solicitud de prueba sin verificar token
-                    console.log('Probando conexión...');
-                    console.log('URL de prueba:', API_ENDPOINTS.MASTERS.GENDERS);
-                    
-                    toast.loading('Verificando conexión con el servidor...', { id: 'connection-test' });
-                    const response = await axiosInstance.get(API_ENDPOINTS.MASTERS.GENDERS);
-                    
-                    console.log('Respuesta de prueba:', response.data);
-                    toast.success('Conexión exitosa con el servidor', { id: 'connection-test' });
-                    
-                    // Mostrar los datos recibidos
-                    if (response.data?.data?.length > 0) {
-                      setGenders(response.data.data);
-                      toast.success(`Se obtuvieron ${response.data.data.length} registros de género del servidor`);
-                      
-                      // Recargar la página después de una conexión exitosa
-                      setTimeout(() => {
-                        window.location.reload();
-                      }, 1500);
-                    }
-                  } catch (error: any) {
-                    console.error('Error en la prueba de conexión:', error);
-                    
-                    let errorMessage = 'Error en la prueba de conexión';
-                    if (error.response) {
-                      errorMessage += `: ${error.response.status} - ${error.response.statusText}`;
-                      console.error('Detalles del error:', error.response.data);
-                    } else if (error.request) {
-                      errorMessage += ': No se recibió respuesta del servidor';
-                    } else {
-                      errorMessage += `: ${error.message}`;
-                    }
-                    
-                    toast.error(errorMessage, { id: 'connection-test' });
-                  }
-                }} 
-                className="bg-blue-500 hover:bg-blue-600 w-full sm:w-auto"
-              >
-                Probar Conexión
-              </Button>
-            </div>
-          </div>
+          <button
+            onClick={() => window.location.reload()}
+            className="bg-[#006837] text-white px-4 py-2 rounded hover:bg-[#005229] transition-colors"
+          >
+            Intentar nuevamente
+          </button>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 p-4">
-      <div className="max-w-3xl w-full bg-white rounded-2xl shadow-lg p-8">
-        <div className="flex justify-center mb-6">
-          <img src={logo2} alt="Logo" className="h-20" />
-        </div>
-        <h2 className="text-2xl font-bold text-[#006837] mb-6 text-center">Registro de Deportista</h2>
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-5">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              <FormField
-                control={form.control}
-                name="name"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="flex items-center gap-2 text-base">
-                      <User className="h-5 w-5" />
-                      Nombre
-                    </FormLabel>
-                    <FormControl>
-                      <Input 
-                        placeholder="Ingrese su nombre" 
-                        {...field} 
-                        className="h-11 text-base"
-                      />
-                    </FormControl>
-                    <FormMessage className="text-red-500" />
-                  </FormItem>
-                )}
-              />
+    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 py-8 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-3xl mx-auto">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-white rounded-2xl shadow-xl p-8"
+        >
+          <div className="text-center mb-8">
+            <img src={logo2} alt="Logo" className="w-32 mx-auto mb-4" />
+            <h1 className="text-3xl font-bold text-[#006837] mb-4">Registro de Datos Personales</h1>
+            <p className="text-gray-600">
+              Por favor, complete todos los campos con su información personal.
+            </p>
+          </div>
 
-              <FormField
-                control={form.control}
-                name="lastName"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="flex items-center gap-2 text-base">
-                      <User className="h-5 w-5" />
-                      Apellido
-                    </FormLabel>
-                    <FormControl>
-                      <Input 
-                        placeholder="Ingrese su apellido" 
-                        {...field} 
-                        className="h-11 text-base"
-                      />
-                    </FormControl>
-                    <FormMessage className="text-red-500" />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="birthDate"
-                render={({ field }) => (
-                  <FormItem className="relative">
-                    <FormLabel className="flex items-center gap-2 text-base">
-                      <Calendar className="h-5 w-5" />
-                      Fecha de Nacimiento
-                    </FormLabel>
-                    <FormControl>
-                      <DatePicker
-                        selected={field.value}
-                        onChange={field.onChange}
-                        locale="es"
-                        dateFormat="dd/MM/yyyy"
-                        className="w-full h-11 text-base px-4 border rounded-md focus:ring-2 focus:ring-[#006837] focus:border-[#006837] transition-all duration-200"
-                        placeholderText="Seleccione su fecha de nacimiento"
-                        showYearDropdown
-                        scrollableYearDropdown
-                        yearDropdownItemNumber={100}
-                        maxDate={new Date()}
-                        minDate={new Date(1900, 0, 1)}
-                        customInput={
-                          <Input 
-                            className="h-11 text-base cursor-pointer"
-                            readOnly
-                          />
-                        }
-                      />
-                    </FormControl>
-                    <FormMessage className="text-red-500" />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="sex"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="flex items-center gap-2 text-base">
-                      <UserRound className="h-5 w-5" />
-                      Género
-                    </FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <FormField
+                  control={form.control}
+                  name="name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="flex items-center gap-2 text-base">
+                        <User className="h-5 w-5" />
+                        Nombre
+                      </FormLabel>
                       <FormControl>
-                        <SelectTrigger className="h-11 text-base">
-                          <SelectValue placeholder="Seleccione su género" />
-                        </SelectTrigger>
+                        <Input 
+                          {...field}
+                          placeholder="Nombre"
+                          className="h-11 text-base bg-gray-100"
+                          disabled
+                          readOnly
+                        />
                       </FormControl>
-                      <SelectContent>
-                        {genders.map((gender) => (
-                          <SelectItem key={gender.id} value={gender.id.toString()} className="text-base">
-                            {gender.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage className="text-red-500" />
-                  </FormItem>
-                )}
-              />
+                      <FormMessage className="text-red-500" />
+                    </FormItem>
+                  )}
+                />
 
-              <FormField
-                control={form.control}
-                name="documentType"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="flex items-center gap-2 text-base">
-                      <FileText className="h-5 w-5" />
-                      Tipo de Documento
-                    </FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                <FormField
+                  control={form.control}
+                  name="lastName"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="flex items-center gap-2 text-base">
+                        <User className="h-5 w-5" />
+                        Apellido
+                      </FormLabel>
                       <FormControl>
-                        <SelectTrigger className="h-11 text-base">
-                          <SelectValue placeholder="Seleccione tipo de documento" />
-                        </SelectTrigger>
+                        <Input 
+                          {...field}
+                          placeholder="Apellido"
+                          className="h-11 text-base bg-gray-100"
+                          disabled
+                          readOnly
+                        />
                       </FormControl>
-                      <SelectContent>
-                        {documentTypes.map((type) => (
-                          <SelectItem key={type.id} value={type.id.toString()} className="text-base">
-                            {type.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage className="text-red-500" />
-                  </FormItem>
-                )}
-              />
+                      <FormMessage className="text-red-500" />
+                    </FormItem>
+                  )}
+                />
 
-              <FormField
-                control={form.control}
-                name="documentNumber"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="flex items-center gap-2 text-base">
-                      <Hash className="h-5 w-5" />
-                      Número de Documento
-                    </FormLabel>
-                    <FormControl>
-                      <Input 
-                        placeholder="Ingrese su número de documento" 
-                        {...field} 
-                        className="h-11 text-base"
-                      />
-                    </FormControl>
-                    <FormMessage className="text-red-500" />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="address"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="flex items-center gap-2 text-base">
-                      <MapPin className="h-5 w-5" />
-                      Dirección
-                    </FormLabel>
-                    <FormControl>
-                      <Input 
-                        placeholder="Ingrese su dirección" 
-                        {...field} 
-                        className="h-11 text-base"
-                      />
-                    </FormControl>
-                    <FormMessage className="text-red-500" />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="department"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="flex items-center gap-2 text-base">
-                      <Building className="h-5 w-5" />
-                      Departamento
-                    </FormLabel>
-                    <Select 
-                      onValueChange={(value) => {
-                        field.onChange(value);
-                        setSelectedDepartment(value);
-                      }} 
-                      defaultValue={field.value}
-                    >
+                <FormField
+                  control={form.control}
+                  name="birthDate"
+                  render={({ field }) => (
+                    <FormItem className="relative">
+                      <FormLabel className="flex items-center gap-2 text-base">
+                        <Calendar className="h-5 w-5" />
+                        Fecha de Nacimiento
+                      </FormLabel>
                       <FormControl>
-                        <SelectTrigger className="h-11 text-base">
-                          <SelectValue placeholder="Seleccione departamento" />
-                        </SelectTrigger>
+                        <DatePicker
+                          selected={field.value}
+                          onChange={field.onChange}
+                          locale="es"
+                          dateFormat="dd/MM/yyyy"
+                          className="w-full h-11 text-base px-4 border rounded-md focus:ring-2 focus:ring-[#006837] focus:border-[#006837] transition-all duration-200"
+                          placeholderText="Seleccione su fecha de nacimiento"
+                          showYearDropdown
+                          scrollableYearDropdown
+                          yearDropdownItemNumber={100}
+                          maxDate={new Date()}
+                          minDate={new Date(1900, 0, 1)}
+                          customInput={
+                            <Input 
+                              className="h-11 text-base cursor-pointer"
+                              readOnly
+                            />
+                          }
+                        />
                       </FormControl>
-                      <SelectContent>
-                        {departamentos.map((depto) => (
-                          <SelectItem key={depto} value={depto} className="text-base">
-                            {depto}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage className="text-red-500" />
-                  </FormItem>
-                )}
-              />
+                      <FormMessage className="text-red-500" />
+                    </FormItem>
+                  )}
+                />
 
-              <FormField
-                control={form.control}
-                name="city"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="flex items-center gap-2 text-base">
-                      <Building className="h-5 w-5" />
-                      Ciudad
-                    </FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                <FormField
+                  control={form.control}
+                  name="sex"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="flex items-center gap-2 text-base">
+                        <UserRound className="h-5 w-5" />
+                        Género
+                      </FormLabel>
+                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <FormControl>
+                          <SelectTrigger className="h-11 text-base">
+                            <SelectValue placeholder="Seleccione su género" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {genders.map((gender) => (
+                            <SelectItem key={gender.id} value={gender.id.toString()} className="text-base">
+                              {gender.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage className="text-red-500" />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="documentType"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="flex items-center gap-2 text-base">
+                        <FileText className="h-5 w-5" />
+                        Tipo de Documento
+                      </FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value} defaultValue={field.value} disabled>
+                        <FormControl>
+                          <SelectTrigger className="h-11 text-base">
+                            <SelectValue placeholder="Seleccione tipo de documento" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {documentTypes.map((type) => (
+                            <SelectItem key={type.id} value={type.id.toString()} className="text-base">
+                              {type.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage className="text-red-500" />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="documentNumber"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="flex items-center gap-2 text-base">
+                        <Hash className="h-5 w-5" />
+                        Número de Documento
+                      </FormLabel>
                       <FormControl>
-                        <SelectTrigger className="h-11 text-base">
-                          <SelectValue placeholder="Seleccione ciudad" />
-                        </SelectTrigger>
+                        <Input 
+                          {...field} 
+                          className="h-11 text-base bg-gray-100"
+                          disabled
+                          readOnly
+                        />
                       </FormControl>
-                      <SelectContent>
-                        {filteredCities.map((city) => (
-                          <SelectItem key={city} value={city} className="text-base">
-                            {city}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage className="text-red-500" />
-                  </FormItem>
-                )}
-              />
+                      <FormMessage className="text-red-500" />
+                    </FormItem>
+                  )}
+                />
 
-              <FormField
-                control={form.control}
-                name="country"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="flex items-center gap-2 text-base">
-                      <Globe className="h-5 w-5" />
-                      País
-                    </FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                <FormField
+                  control={form.control}
+                  name="address"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="flex items-center gap-2 text-base">
+                        <MapPin className="h-5 w-5" />
+                        Dirección
+                      </FormLabel>
                       <FormControl>
-                        <SelectTrigger className="h-11 text-base">
-                          <SelectValue placeholder="Seleccione país" />
-                        </SelectTrigger>
+                        <Input 
+                          placeholder="Ingrese su dirección" 
+                          {...field} 
+                          className="h-11 text-base"
+                        />
                       </FormControl>
-                      <SelectContent>
-                        {filteredCountries.map((country) => (
-                          <SelectItem key={country} value={country} className="text-base">
-                            {country}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage className="text-red-500" />
-                  </FormItem>
-                )}
-              />
+                      <FormMessage className="text-red-500" />
+                    </FormItem>
+                  )}
+                />
 
-              <FormField
-                control={form.control}
-                name="email"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="flex items-center gap-2 text-base">
-                      <Mail className="h-5 w-5" />
-                      Correo Electrónico
-                    </FormLabel>
-                    <FormControl>
-                      <Input 
-                        placeholder="Ingrese su correo electrónico" 
-                        {...field} 
-                        className="h-11 text-base"
-                      />
-                    </FormControl>
-                    <FormMessage className="text-red-500" />
-                  </FormItem>
-                )}
-              />
+                <FormField
+                  control={form.control}
+                  name="department"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="flex items-center gap-2 text-base">
+                        <Building className="h-5 w-5" />
+                        Departamento
+                      </FormLabel>
+                      <Select 
+                        onValueChange={(value) => {
+                          field.onChange(value);
+                          setSelectedDepartment(value);
+                        }} 
+                        defaultValue={field.value}
+                      >
+                        <FormControl>
+                          <SelectTrigger className="h-11 text-base">
+                            <SelectValue placeholder="Seleccione departamento" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {departamentos.map((depto) => (
+                            <SelectItem key={depto} value={depto} className="text-base">
+                              {depto}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage className="text-red-500" />
+                    </FormItem>
+                  )}
+                />
 
-              <FormField
-                control={form.control}
-                name="phone"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="flex items-center gap-2 text-base">
-                      <Phone className="h-5 w-5" />
-                      Teléfono
-                    </FormLabel>
-                    <FormControl>
-                      <Input 
-                        placeholder="Ingrese su número de teléfono" 
-                        {...field} 
-                        className="h-11 text-base"
-                      />
-                    </FormControl>
-                    <FormMessage className="text-red-500" />
-                  </FormItem>
-                )}
-              />
-            </div>
+                <FormField
+                  control={form.control}
+                  name="city"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="flex items-center gap-2 text-base">
+                        <Building className="h-5 w-5" />
+                        Ciudad
+                      </FormLabel>
+                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <FormControl>
+                          <SelectTrigger className="h-11 text-base">
+                            <SelectValue placeholder="Seleccione ciudad" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {filteredCities.map((city) => (
+                            <SelectItem key={city} value={city} className="text-base">
+                              {city}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage className="text-red-500" />
+                    </FormItem>
+                  )}
+                />
 
-            <div className="flex justify-center mt-6">
-              <Button 
-                type="submit" 
-                className="bg-[#006837] hover:bg-[#005828] text-white px-10 py-2.5 rounded-lg text-base font-semibold transition-all duration-200 hover:scale-105"
-                disabled={isSubmitting}
-              >
-                {isSubmitting ? 'Guardando...' : 'Guardar y continuar'}
-              </Button>
-            </div>
-          </form>
-        </Form>
+                <FormField
+                  control={form.control}
+                  name="country"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="flex items-center gap-2 text-base">
+                        <Globe className="h-5 w-5" />
+                        País
+                      </FormLabel>
+                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <FormControl>
+                          <SelectTrigger className="h-11 text-base">
+                            <SelectValue placeholder="Seleccione país" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {filteredCountries.map((country) => (
+                            <SelectItem key={country} value={country} className="text-base">
+                              {country}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage className="text-red-500" />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="email"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="flex items-center gap-2 text-base">
+                        <Mail className="h-5 w-5" />
+                        Correo Electrónico
+                      </FormLabel>
+                      <FormControl>
+                        <Input 
+                          placeholder="Ingrese su correo electrónico" 
+                          {...field} 
+                          className="h-11 text-base"
+                        />
+                      </FormControl>
+                      <FormMessage className="text-red-500" />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="phone"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="flex items-center gap-2 text-base">
+                        <Phone className="h-5 w-5" />
+                        Teléfono
+                      </FormLabel>
+                      <FormControl>
+                        <Input 
+                          placeholder="Ingrese su número de teléfono" 
+                          {...field} 
+                          className="h-11 text-base"
+                        />
+                      </FormControl>
+                      <FormMessage className="text-red-500" />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              <div className="flex justify-end gap-4">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => navigate('/user-dashboard')}
+                  className="px-6"
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="bg-[#006837] hover:bg-[#005229] px-6"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Guardando...
+                    </>
+                  ) : (
+                    'Guardar Datos'
+                  )}
+                </Button>
+              </div>
+            </form>
+          </Form>
+        </motion.div>
       </div>
     </div>
   );

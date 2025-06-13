@@ -9,7 +9,6 @@ export interface CreateSportsAchievementDTO {
   sport_competition_category_id: string;
   competition_hierarchy_id: string;
   score: number;
-  postulation_id: string;
 }
 
 export interface SportsAchievement {

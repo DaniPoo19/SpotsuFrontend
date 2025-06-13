@@ -1,116 +1,139 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import axiosInstance from '../api/axios';
-import { useNavigate } from 'react-router-dom';
-import { toast } from 'react-hot-toast';
-import { LoginDTO } from '@/types/dtos';
-
-interface User {
-  id: string;
-  document_number: string;
-  role: {
-    id: string;
-    name: string;
-    description: string;
-  };
-}
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { authService } from '../services/auth.service';
+import { athletesService } from '../services/athletes.service';
+import { User, LoginCredentials, Athlete } from '../types/auth.types';
 
 interface AuthContextType {
   user: User | null;
-  loading: boolean;
-  login: ({document_type_id, document_number, password}: LoginDTO) => Promise<any>;
+  athlete: Athlete | null;
+  isAuthenticated: boolean;
+  isLoading: boolean;
+  login: (credentials: LoginCredentials) => Promise<User>;
   logout: () => void;
-  register: (userData: any) => Promise<void>;
+  checkAthleteStatus: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [athlete, setAthlete] = useState<Athlete | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const navigate = useNavigate();
+  const location = useLocation();
 
-  useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (token) {
-      const userData = JSON.parse(localStorage.getItem('user') || '{}');
-      setUser(userData);
+  const checkAthleteStatus = useCallback(async (userData: User) => {
+    if (!userData?.document_number) {
+      setAthlete(null);
+      return;
     }
-    setLoading(false);
+
+    try {
+      const athleteData = await athletesService.getAthleteByDocument(userData.document_number);
+      setAthlete(athleteData);
+    } catch (error) {
+      console.error('Error al verificar estado del atleta:', error);
+      setAthlete(null);
+    }
   }, []);
 
-  const login = async ({document_type_id, document_number, password}: LoginDTO) => {
+  useEffect(() => {
+    const initAuth = async () => {
+      const publicPaths = ['/login', '/register'];
+      try {
+        const token = localStorage.getItem('auth_token');
+        const userData = localStorage.getItem('user_data');
+        
+        if (token && userData) {
+          const validatedUser = await authService.validateToken(token);
+          
+          if (validatedUser) {
+            setUser(validatedUser);
+            await checkAthleteStatus(validatedUser);
+          } else {
+            localStorage.removeItem('auth_token');
+            localStorage.removeItem('user_data');
+            setUser(null);
+            setAthlete(null);
+
+            if (!publicPaths.includes(location.pathname)) {
+            navigate('/login');
+            }
+          }
+        } else {
+          localStorage.removeItem('auth_token');
+          localStorage.removeItem('user_data');
+          setUser(null);
+          setAthlete(null);
+
+          if (!publicPaths.includes(location.pathname)) {
+          navigate('/login');
+          }
+        }
+      } catch (error) {
+        console.error('Error al inicializar autenticación:', error);
+        localStorage.removeItem('auth_token');
+        localStorage.removeItem('user_data');
+        setUser(null);
+        setAthlete(null);
+
+        if (!publicPaths.includes(location.pathname)) {
+        navigate('/login');
+        }
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    initAuth();
+  }, [navigate, checkAthleteStatus, location.pathname]);
+
+  const login = async (credentials: LoginCredentials): Promise<User> => {
     try {
-
-      const response = await axiosInstance.post('/auth/login', {
-        document_number,
-        password,
-        document_type_id
-      });
-
-      if (response.data?.data?.access_token) {
-        const token = response.data.data.access_token;
-        localStorage.setItem('token', token);
-
-        // Decodificar el token para obtener la información del usuario
-        const tokenPayload = JSON.parse(atob(token.split('.')[1]));
-        console.log({tokenPayload});  
-        const userData = {
-          id: tokenPayload.id,
-          document_number: tokenPayload.document_number,
-          role: tokenPayload.role
-        };
-
-        localStorage.setItem('user', JSON.stringify(userData));
-        setUser(userData);
-        toast.success('¡Inicio de sesión exitoso!');
-        navigate('/dashboard');
-        return userData;
+      const response = await authService.login(credentials);
+      
+      if (response) {
+        localStorage.setItem('auth_token', response.token || '');
+        localStorage.setItem('user_data', JSON.stringify(response));
+        
+        setUser(response);
+        await checkAthleteStatus(response);
+        
+        if (!athlete) {
+          navigate('/user-dashboard/postulations/new/personal-info');
+        } else {
+          navigate('/user-dashboard');
+        }
       }
-    } catch (error: any) {
+      return response;
+    } catch (error) {
       console.error('Error en login:', error);
-      if (error.response?.status === 401) {
-        toast.error('Credenciales inválidas');
-      } else if (error.code === 'ERR_NETWORK') {
-        toast.error('No se pudo conectar con el servidor');
-      } else {
-        toast.error(error.response?.data?.message || 'Error al iniciar sesión');
-      }
       throw error;
     }
   };
 
   const logout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
+    console.log('Cerrando sesión');
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('user_data');
+    authService.logout();
     setUser(null);
+    setAthlete(null);
     navigate('/login');
   };
 
-  const register = async (userData: any) => {
-    try {
-      const response = await axiosInstance.post('/people', userData);
-      if (response.data) {
-        toast.success('¡Registro exitoso!');
-        navigate('/login');
-      }
-    } catch (error: any) {
-      console.error('Error en registro:', error);
-      if (error.response?.status === 400) {
-        toast.error(error.response.data.message || 'Error en los datos de registro');
-      } else if (error.code === 'ERR_NETWORK') {
-        toast.error('No se pudo conectar con el servidor');
-      } else {
-        toast.error('Error al registrar usuario');
-      }
-      throw error;
-    }
+  const value = {
+    user,
+    athlete,
+    isAuthenticated: !!user && !!localStorage.getItem('auth_token'),
+    isLoading,
+    login,
+    logout,
+    checkAthleteStatus: () => user ? checkAthleteStatus(user) : Promise.resolve(),
   };
 
-  return (
-    <AuthContext.Provider value={{ user, loading, login, logout, register }}>
-      {children}
-    </AuthContext.Provider>
-  );
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
 export const useAuth = () => {

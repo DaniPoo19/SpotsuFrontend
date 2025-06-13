@@ -1,12 +1,13 @@
 import React from 'react';
 import { Users, FileCheck, FileWarning, Medal } from 'lucide-react';
-import { mockAspirants } from '../../../data';
-import { StatCard } from '../../../components/common/StatCard';
+import { mockAspirants } from '../../data';
+import { StatCard } from '../../components/common/StatCard';
+import { Aspirant } from '@/types';
 
 export const DashboardStats = () => {
   const totalAspirants = mockAspirants.length;
   const completeDocuments = mockAspirants.filter(
-    a => a.documents.sportsCertificate && a.documents.medicalCertificate && a.documents.consentForm
+    (a: Aspirant) => a.documents.sportsCertificate && a.documents.medicalCertificate && a.documents.consentForm
   ).length;
 
   return (

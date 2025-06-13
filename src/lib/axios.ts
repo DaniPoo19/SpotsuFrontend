@@ -1,15 +1,13 @@
 import axios from 'axios';
 
-const baseURL = 'http://localhost:3000/spotsu/api/v1';
-
 export const api = axios.create({
-  baseURL,
+  baseURL: 'http://localhost:3000/spotsu/api/v1',
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
-// Interceptor para añadir el token de autenticación
+// Interceptor para agregar el token de autenticación
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('token');
   if (token) {
@@ -23,29 +21,25 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response) {
-      // Error de respuesta del servidor
-      const { status, data } = error.response;
+      // El servidor respondió con un código de estado fuera del rango 2xx
+      console.error('[API Response Error]:', error);
       
-      switch (status) {
-        case 404:
-          // Recurso no encontrado
-          console.error('El recurso solicitado no existe');
-          break;
-        case 500:
-          // Error del servidor
-          console.error('Error interno del servidor');
-          break;
-        default:
-          console.error('Error en la petición:', data.message || 'Error desconocido');
+      if (error.response.status === 401) {
+        // Token expirado o inválido
+        localStorage.removeItem('token');
+        window.location.href = '/login';
+      }
+      
+      if (error.response.status === 404) {
+        console.error('El recurso solicitado no existe');
       }
     } else if (error.request) {
-      // Error de red
-      console.error('Error de conexión:', error.message);
+      // La petición fue hecha pero no se recibió respuesta
+      console.error('[API Request Error]:', error);
     } else {
-      // Error en la configuración de la petición
-      console.error('Error en la configuración:', error.message);
+      // Algo sucedió al configurar la petición
+      console.error('[API Error]:', error);
     }
-    
     return Promise.reject(error);
   }
 ); 
