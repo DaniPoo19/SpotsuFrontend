@@ -13,10 +13,9 @@ export default defineConfig({
     },
   },
   server: {
-    port: 5174, // Cambiamos al puerto que está disponible
-    strictPort: true, // Forzar el uso de este puerto
-    host: true, // Permitir conexiones desde la red
+    port: 5174,
+    strictPort: true,
+    host: true,
   },
-  base: '/', // Usar la raíz para desarrollo local
-})
-
+  base: '/ProyectoSpotsu/',  // ✅ Corregido para GitHub Pages
+});
