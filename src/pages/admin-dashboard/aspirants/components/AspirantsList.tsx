@@ -1,21 +1,27 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search } from 'lucide-react';
+import { mockAspirants } from '../../data';
 import { aspirantsService } from '@/services/aspirants.service';
 import { sportsService } from '@/services/sports.service';
-import { athletesService } from '@/services/athletes.service';
 import { AspirantDTO } from '@/types/dtos';
 import { Aspirant } from '@/types';
+import { AspirantStatus } from '../../components/common/AspirantStatus';
+import { athletesService } from '@/services/athletes.service';
 
 export const AspirantsList = () => {
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedGender, setSelectedGender] = useState<string>('');
   const [selectedDiscipline, setSelectedDiscipline] = useState<string>('');
+  const [selectedSemester, setSelectedSemester] = useState<string>('');
   const [aspirants, setAspirants] = useState<Aspirant[]>([]);
-  const [postulationStatuses, setPostulationStatuses] = useState<Record<string, string>>({});
-  const [isLoading, setIsLoading] = useState(true);
   const [disciplines, setDisciplines] = useState<string[]>([]);
+  const [postulationStatuses, setPostulationStatuses] = useState<Record<string, string>>({});
+  const [aspirantSemesters, setAspirantSemesters] = useState<Record<string, string>>({});
+  const [aspirantSports, setAspirantSports] = useState<Record<string, string>>({});
+  const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>('');
+  const [isLoading, setIsLoading] = useState(true);
 
   const abbreviateDocumentType = (docType: string): string => {
     if (!docType) return 'CC';
@@ -55,19 +61,76 @@ export const AspirantsList = () => {
     },
   });
 
-  const loadPostulationStatuses = async (aspList: Aspirant[]) => {
-    const statusEntries = await Promise.all(
+  const fetchStatusesFor = async (aspList: Aspirant[]) => {
+    const entries = await Promise.all(
       aspList.map(async (a) => {
         try {
-          const postulations = await athletesService.getPostulations(a.id);
-          const active = postulations.find((p: any) => p.status !== undefined);
-          return [a.id, active?.status ?? 'Sin Postulación'];
-        } catch (_) {
+          const fetched = await athletesService.getPostulations(a.id);
+          const posts = (fetched || []).sort((p1: any, p2: any) => {
+            const d1 = new Date(p1.createdAt || p1.created_at || 0).getTime();
+            const d2 = new Date(p2.createdAt || p2.created_at || 0).getTime();
+            return d2 - d1;
+          });
+          const active = posts.find((p: any) => ['active','pending','parq_completed'].includes(p.status));
+          const rawStatus = active?.status ?? (posts[0]?.status ?? 'Sin Postulación');
+
+          const mapStatusToLabel = (st: string) => {
+            switch (st) {
+              case 'parq_completed':
+                return 'Falta Historial Deportivo';
+              case 'active':
+              case 'pending':
+              case 'Pendiente':
+              case 'Active':
+                return 'En Proceso';
+              case 'completed':
+                return 'Completado';
+              case 'cancelled':
+              case 'Cancelada':
+              case 'Cancelled':
+                return 'Cancelada';
+              case 'Sin Postulación':
+                return 'Sin Postulación';
+              default:
+                return st.charAt(0).toUpperCase() + st.slice(1);
+            }
+          };
+
+          const statusLabel = mapStatusToLabel(rawStatus);
+
+          const rawSem = (active as any)?.semester?.name || (posts[0] as any)?.semester?.name || '';
+          const match = rawSem.match(/(\d{4}-\d)/);
+          const semesterName = match ? match[1] : rawSem || 'N/A';
+
+          // deportes asociados (postulation_sports)
+          const ps = (active as any)?.postulation_sports || (posts[0] as any)?.postulation_sports || [];
+          const sportNames = Array.isArray(ps)
+            ? Array.from(new Set(ps.map((psItem: any) => psItem?.sport?.name || '').filter(Boolean)))
+            : [];
+          const sportsLabel = sportNames.length ? sportNames.join(', ') : 'Sin deporte';
+
+          return [a.id, { status: statusLabel, semester: semesterName, sports: sportsLabel }];
+        } catch {
           return [a.id, 'Sin Postulación'];
         }
       })
     );
-    setPostulationStatuses(Object.fromEntries(statusEntries));
+    const statusMap: Record<string,string> = {};
+    const semesterMap: Record<string,string> = {};
+    const sportsMap: Record<string,string> = {};
+    entries.forEach(([id, obj]: any) => {
+      if (typeof obj === 'string') {
+        statusMap[id] = obj;
+      } else {
+        statusMap[id] = obj.status;
+        semesterMap[id] = obj.semester;
+        sportsMap[id] = obj.sports;
+      }
+    });
+    setPostulationStatuses(statusMap);
+    setAspirantSemesters(semesterMap);
+    setAspirantSports(sportsMap);
+    setIsLoading(false);
   };
 
   useEffect(() => {
@@ -82,9 +145,8 @@ export const AspirantsList = () => {
         setAspirants(mappedAspirants);
         setDisciplines(sports.map(s => s.name));
 
-        // Cargar estados en segundo plano para mejorar tiempo inicial
-        loadPostulationStatuses(mappedAspirants);
-        setIsLoading(false);
+        // esperar a los estados antes de quitar loader para evitar parpadeo
+        await fetchStatusesFor(mappedAspirants);
       } catch (error) {
         console.error('Error al cargar aspirantes o disciplinas, usando datos mock:', error);
       }
@@ -97,12 +159,17 @@ export const AspirantsList = () => {
     const matchesSearch = aspirant.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          aspirant.personalInfo.idNumber.includes(searchTerm);
     const matchesGender = !selectedGender || aspirant.gender === selectedGender;
-    const matchesDiscipline = !selectedDiscipline || aspirant.discipline === selectedDiscipline;
+    const sportLabel = aspirantSports[aspirant.id] || aspirant.discipline || 'Sin deporte';
+    const matchesDiscipline = !selectedDiscipline || sportLabel.split(',').map(s=>s.trim()).includes(selectedDiscipline);
+    const matchesSemester = !selectedSemester || aspirantSemesters[aspirant.id] === selectedSemester;
+    const matchesStatus = !selectedStatusFilter || postulationStatuses[aspirant.id] === selectedStatusFilter;
     
-    return matchesSearch && matchesGender && matchesDiscipline;
+    return matchesSearch && matchesGender && matchesDiscipline && matchesSemester && matchesStatus;
   });
 
-  const disciplineOptions = disciplines.length ? disciplines : Array.from(new Set(aspirants.map((a: Aspirant) => a.discipline)));
+  const disciplineOptions = Array.from(new Set(Object.values(aspirantSports).flatMap(label => (label||'').split(',').map(s=>s.trim())).filter(v=>v && v!=='Sin deporte')));
+  const semesterOptions = Array.from(new Set(Object.values(aspirantSemesters).filter(Boolean)));
+  const statusOptions = Array.from(new Set(Object.values(postulationStatuses).filter(Boolean)));
 
   return (
     <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
@@ -137,6 +204,26 @@ export const AspirantsList = () => {
               <option key={discipline} value={discipline}>{discipline}</option>
             ))}
           </select>
+          <select
+            className="px-4 py-2 border rounded-xl"
+            value={selectedSemester}
+            onChange={(e) => setSelectedSemester(e.target.value)}
+          >
+            <option value="">Todos los semestres</option>
+            {semesterOptions.map(sem => (
+              <option key={sem} value={sem}>{sem}</option>
+            ))}
+          </select>
+          <select
+            className="px-4 py-2 border rounded-xl"
+            value={selectedStatusFilter}
+            onChange={(e) => setSelectedStatusFilter(e.target.value)}
+          >
+            <option value="">Todos los estados</option>
+            {statusOptions.map(stat => (
+              <option key={stat} value={stat}>{stat}</option>
+            ))}
+          </select>
         </div>
       </div>
 
@@ -150,7 +237,8 @@ export const AspirantsList = () => {
               <th className="px-6 py-4 text-left text-sm font-semibold text-gray-600">Nombre</th>
               <th className="px-6 py-4 text-left text-sm font-semibold text-gray-600">ID</th>
               <th className="px-6 py-4 text-left text-sm font-semibold text-gray-600">Disciplina</th>
-              <th className="px-6 py-4 text-left text-sm font-semibold text-gray-600">Postulación</th>
+              <th className="px-6 py-4 text-left text-sm font-semibold text-gray-600">Semestre</th>
+              <th className="px-6 py-4 text-left text-sm font-semibold text-gray-600">Estado</th>
               <th className="px-6 py-4 text-left text-sm font-semibold text-gray-600">Calificación</th>
               <th className="px-6 py-4 text-left text-sm font-semibold text-gray-600">Acciones</th>
             </tr>
@@ -166,36 +254,37 @@ export const AspirantsList = () => {
                     </div>
                   </div>
                 </td>
-                <td className="px-6 py-4 text-sm text-gray-900">
-                  {aspirant.personalInfo.idType} {aspirant.personalInfo.idNumber}
+                <td className="px-6 py-4">
+                  <div className="text-sm text-gray-900">{aspirant.personalInfo.idType}</div>
+                  <div className="text-sm text-gray-500">{aspirant.personalInfo.idNumber}</div>
                 </td>
-                <td className="px-6 py-4 text-sm text-gray-900">{aspirant.discipline}</td>
+                <td className="px-6 py-4 text-sm text-gray-900">{aspirantSports[aspirant.id] || aspirant.discipline || 'Sin deporte'}</td>
+                <td className="px-6 py-4 text-sm text-gray-900">{aspirantSemesters[aspirant.id] || '…'}</td>
                 <td className="px-6 py-4">
                   {(() => {
-                    const rawStatus = postulationStatuses[aspirant.id] || 'Sin Postulación';
-                    let label = rawStatus;
+                    const label = postulationStatuses[aspirant.id];
+                    if (!label) {
+                      return (<span className="text-gray-400 text-sm">…</span>);
+                    }
                     let color = 'bg-gray-100 text-gray-800';
 
-                    switch (rawStatus) {
-                      case 'parq_completed':
-                        label = 'Falta Historial Deportivo';
+                    switch (label) {
+                      case 'Falta Historial Deportivo':
                         color = 'bg-yellow-100 text-yellow-800';
                         break;
-                      case 'completed':
-                        label = 'Completado';
+                      case 'En Proceso':
+                        color = 'bg-blue-100 text-blue-800';
+                        break;
+                      case 'Completado':
                         color = 'bg-green-100 text-green-800';
                         break;
-                      case 'cancelled':
                       case 'Cancelada':
-                      case 'Cancelled':
-                        label = 'Cancelada';
                         color = 'bg-red-100 text-red-800';
                         break;
                       case 'Sin Postulación':
                         color = 'bg-orange-100 text-orange-800';
                         break;
                       default:
-                        label = rawStatus.charAt(0).toUpperCase() + rawStatus.slice(1);
                         color = 'bg-blue-100 text-blue-800';
                     }
                     return (
@@ -215,12 +304,22 @@ export const AspirantsList = () => {
                   </span>
                 </td>
                 <td className="px-6 py-4">
-                  <button
-                    onClick={() => navigate(`/dashboard/aspirants/${aspirant.id}`)}
-                    className="text-[#006837] hover:text-[#A8D08D] font-medium"
-                  >
-                    Ver detalles
-                  </button>
+                  {postulationStatuses[aspirant.id] && postulationStatuses[aspirant.id] !== 'Sin Postulación' ? (
+                    <button
+                      onClick={() => navigate(`/dashboard/aspirants/${aspirant.id}`)}
+                      className="text-[#006837] hover:text-[#A8D08D] font-medium"
+                    >
+                      Ver detalles
+                    </button>
+                  ) : (
+                    <button
+                      disabled
+                      className="text-gray-400 cursor-not-allowed font-medium"
+                      title="El aspirante aún no tiene postulación registrada"
+                    >
+                      Ver detalles
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}

@@ -188,6 +188,22 @@ export const PostulationsPage = () => {
     return steps.find(step => step.completed !== true) || steps[steps.length - 1];
   };
 
+  const formatDate = (dateString: string) => {
+    if (!dateString) return 'Fecha no disponible';
+    let parsed = dateString;
+    // Reemplazar espacio entre fecha y hora por 'T' si existe
+    if (parsed.includes(' ') && !parsed.includes('T')) {
+      parsed = parsed.replace(' ', 'T');
+    }
+    const date = new Date(parsed);
+    if (isNaN(date.getTime())) return 'Fecha no disponible';
+    return date.toLocaleDateString('es-ES', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+  };
+
   if (isLoading || loading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gradient-to-b from-gray-50 to-white">
@@ -326,11 +342,7 @@ export const PostulationsPage = () => {
                             <div className="flex items-center gap-1.5 text-xs sm:text-sm text-gray-500 font-sans">
                               <Calendar className="w-4 h-4" />
                               <span>
-                                {new Date(postulation.created_at).toLocaleDateString('es-ES', {
-                                  year: 'numeric',
-                                  month: 'long',
-                                  day: 'numeric'
-                                })}
+                                {formatDate(postulation.created_at)}
                               </span>
                             </div>
                             <div className="flex items-center gap-1.5 text-xs sm:text-sm text-gray-500 font-sans">

@@ -76,11 +76,11 @@ export const PostulationDetailsPage = () => {
 
       // Verificar el estado del PAR-Q (devuelve true si el cuestionario está respondido)
       const parqCompleted = await parqService.checkParQCompletion(id);
-
+      
       // Si la postulación está en estado cancelado significa que hubo al menos una respuesta positiva
       const notApt = existingPostulation.status === 'cancelled';
       setHasPositiveParQ(notApt);
-
+      
       // Actualizar la postulación en estado local con flags verdaderos
       setPostulation({
         ...existingPostulation,
@@ -310,19 +310,19 @@ export const PostulationDetailsPage = () => {
   };
 
   const formatDate = (dateString: string) => {
-    try {
-      const date = new Date(dateString);
-      if (isNaN(date.getTime())) {
-        return 'Fecha no disponible';
-      }
-      return date.toLocaleDateString('es-ES', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
-      });
-    } catch (error) {
-      return 'Fecha no disponible';
+    if (!dateString) return 'Fecha no disponible';
+    let parsed = dateString;
+    // Si el formato es "YYYY-MM-DD HH:MM:SS" (con espacio) lo convertimos a ISO simple
+    if (parsed.includes(' ') && !parsed.includes('T')) {
+      parsed = parsed.replace(' ', 'T');
     }
+    const date = new Date(parsed);
+    if (isNaN(date.getTime())) return 'Fecha no disponible';
+    return date.toLocaleDateString('es-ES', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
   };
 
   if (loading) {

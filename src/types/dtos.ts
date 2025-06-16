@@ -419,6 +419,25 @@ export interface PostulationDTO {
   };
   personal_info_completed?: boolean;
   documents_completed?: boolean;
+  postulation_sports?: Array<{
+    sport?: {
+      id: string;
+      name: string;
+    };
+    experience_years?: number;
+    postulation_sport_achievements?: Array<{
+      sports_achievement?: {
+        id: string;
+        name?: string;
+        competition_hierarchy?: {
+          id: string;
+          name: string;
+        };
+      };
+      certificate_url?: string;
+      status?: string;
+    }>;
+  }>;
 }
 
 export interface ParQResponseDTO {

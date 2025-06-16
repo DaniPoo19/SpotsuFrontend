@@ -34,17 +34,23 @@ export const morphologicalService = {
     return resp.data.data;
   },
 
+  async getVariableResults(postulationId: string): Promise<VariableResultPayload[]> {
+    const { data } = await api.get(`/morphological-variable-results`, {
+      params: { postulation_id: postulationId },
+    });
+    return data.data;
+  },
+
   async getVariablesWeights(): Promise<MorphologicalVariablesWeight[]> {
     const resp = await api.get('/morphological-variables-weight');
     return resp.data.data;
   },
 
   async createVariableResults(postulationId: string, variables: VariableResultPayload[]) {
-    const resp = await api.post('/morphological-variable-results', {
+    return api.post('/morphological-variable-results', {
       postulation_id: postulationId,
       variables,
     });
-    return resp.data.data;
   },
 
   async createVariableResult(postulationId: string, variable: VariableResultPayload) {
@@ -53,5 +59,17 @@ export const morphologicalService = {
       variables: [variable],
     });
     return resp.data.data;
+  },
+
+  /**
+   * Obtener el puntaje morfofuncional total calculado por el backend para una postulación
+   * @param postulationId ID de la postulación
+   * @returns Puntaje numérico
+   */
+  async getPostulationScore(postulationId: string): Promise<number> {
+    if (!postulationId) throw new Error('Se requiere postulationId');
+    const resp = await api.get(`/morphological-variable-results/score/${postulationId}`);
+    // El backend envuelve respuesta con helper => { data: { score: number } }
+    return resp.data?.data?.score ?? resp.data?.score ?? 0;
   },
 }; 

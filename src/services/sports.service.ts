@@ -36,17 +36,19 @@ export interface AttachedDocumentType {
   is_active: boolean;
 }
 
-interface CreateSportsAchievementData {
-  sport_history_id: string;
-  achievement_type_id: string;
-  competition_category_id: string;
+// Datos para vincular un logro ya existente a la postulación
+interface CreateLinkedSportsAchievementData {
+  postulation_sport_id: string;
+  sport_achievement_id: string;
+  competition_name: string;
+  file?: File | null;
+}
+
+// Datos necesarios para crear un SportsAchievement base en el backend
+interface CreateSportsAchievementBaseData {
+  sport_competition_category_id: string;
   competition_hierarchy_id: string;
-  name: string;
-  description: string;
-  date: string;
-  position: string;
-  score: string;
-  postulation_id: string;
+  score: number;
 }
 
 interface UploadAttachedDocumentData {
@@ -152,7 +154,7 @@ export const sportsService = {
 
       // Mapeamos los tipos de competencia según la categoría
       const competitionTypes = COMPETITION_TYPES_BY_CATEGORY[category.name as CategoryName] || [];
-      
+
       // Convertimos los tipos a CompetitionHierarchyDTO
       return competitionTypes.map((type: CompetitionType) => ({
         id: type.id,
@@ -192,35 +194,20 @@ export const sportsService = {
   },
 
   // Crear logro deportivo (SportsAchievement) y vincularlo al PostulationSport
-  createSportsAchievementWithLink: async (postulationSportId: string, data: CreateSportsAchievementData & { file?: File | null }): Promise<any> => {
+  createSportsAchievementWithLink: async (postulationSportId: string, data: CreateLinkedSportsAchievementData): Promise<any> => {
     try {
-      // 1. Crear el logro deportivo
-      // El puntaje lo asignará posteriormente un administrador; enviamos 0 como placeholder
-      const achievementPayload = {
-        sport_competition_category_id: data.competition_category_id,
-        competition_hierarchy_id: data.competition_hierarchy_id,
-        score: 0,
-      };
-      console.log('[SportsService] Payload crear achievement:', achievementPayload);
-      const achievementResp = await api.post(API_ENDPOINTS.SPORTS_ACHIEVEMENTS.BASE, achievementPayload);
-      const achievementId = achievementResp.data?.data?.id || achievementResp.data?.id;
-      console.log('[SportsService] Respuesta crear achievement:', achievementResp.data);
-
-      if (!achievementId) throw new Error('No se pudo crear el logro');
-
-      // 2. Vincular al PostulationSport y subir certificado (si existe)
+      let achievementPayload = {
+        postulation_sport_id: data.postulation_sport_id,
+        sport_achievement_id: data.sport_achievement_id,
+        competition_name: data.competition_name,
+      }
       const formData = new FormData();
-      formData.append('postulation_sport_id', postulationSportId);
-      formData.append('sport_achievement_id', achievementId);
+      formData.append('data', JSON.stringify(achievementPayload));
       if (data.file) {
         formData.append('file', data.file);
       }
-      console.log('[SportsService] Vinculando achievement. postulationSportId:', postulationSportId, 'achievementId:', achievementId, 'file?', !!data.file);
-      const linkResp = await api.post(API_ENDPOINTS.POSTULATION_SPORT_ACHIEVEMENTS.BASE, formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data'
-        }
-      });
+      console.log('[SportsService] Vinculando achievement. postulationSportId:', postulationSportId, 'achievementId:', 'file?', !!data.file);
+      const linkResp = await api.post(API_ENDPOINTS.POSTULATION_SPORT_ACHIEVEMENTS.BASE, formData);
       console.log('[SportsService] Respuesta vínculo achievement:', linkResp.data);
       return linkResp.data?.data ?? linkResp.data;
     } catch (error: any) {
@@ -238,7 +225,7 @@ export const sportsService = {
     competition_category_id: string;
     competition_hierarchy_id: string;
     achievement_date: string;
-    description: string;
+    name?: string;
   }): Promise<any> => {
     try {
       const response = await api.put(`/sports-achievements/${id}`, data);
@@ -259,8 +246,8 @@ export const sportsService = {
     }
   },
 
-  // Crear logro deportivo sin vincular (uso genérico)
-  createSportsAchievement: async (data: CreateSportsAchievementData): Promise<any> => {
+  // Crear un SportsAchievement base (sin vínculo) para luego asociarlo a la postulación
+  createSportsAchievement: async (data: CreateSportsAchievementBaseData): Promise<any> => {
     try {
       const response = await api.post(API_ENDPOINTS.SPORTS_ACHIEVEMENTS.BASE, data);
       return response.data?.data ?? response.data;
@@ -278,14 +265,26 @@ export const sportsService = {
       formData.append('attached_document_type_id', data.attached_document_type_id);
       formData.append('file', data.file);
 
-      const response = await api.post(API_ENDPOINTS.ATTACHED_DOCUMENTS.BASE, formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
+      const response = await api.post(API_ENDPOINTS.ATTACHED_DOCUMENTS.BASE, formData);
       return response.data?.data ?? response.data;
     } catch (error) {
       console.error('Error uploading attached document:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Obtener el puntaje total de logros deportivos para una postulación calculado en backend
+   * @param postulationId ID de la postulación
+   * @returns Puntaje numérico
+   */
+  getPostulationSportScore: async (postulationId: string): Promise<number> => {
+    if (!postulationId) throw new Error('Se requiere postulationId');
+    try {
+      const resp = await api.get(`/postulation-sports/score/${postulationId}`);
+      return resp.data?.data?.score ?? resp.data?.score ?? 0;
+    } catch (error) {
+      console.error('Error obteniendo puntaje deportivo:', error);
       throw error;
     }
   },

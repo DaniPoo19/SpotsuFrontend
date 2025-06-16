@@ -29,10 +29,8 @@ export const attachedDocumentsService = {
     try {
       const formData = new FormData();
       formData.append('file', data.file);
-      formData.append('attachedDocument', JSON.stringify({
-        postulation_id: data.postulation_id,
-        attached_document_type_id: data.attached_document_type_id
-      }));
+      formData.append('postulation_id', data.postulation_id);
+      formData.append('attached_document_type_id', data.attached_document_type_id);
 
       const response = await axiosInstance.post<ApiResponse<any>>(
         ENDPOINTS.ATTACHED_DOCUMENTS,
@@ -83,6 +81,26 @@ export const attachedDocumentsService = {
     } catch (error: any) {
       console.error('Error al eliminar documento:', error);
       throw new Error('Error al eliminar documento');
+    }
+  },
+
+  async updateDocument(id: string, data: { status: string }): Promise<AttachedDocumentDTO> {
+    try {
+      const response = await axiosInstance.patch<ApiResponse<AttachedDocumentDTO>>(
+        `${ENDPOINTS.ATTACHED_DOCUMENTS}/${id}`,
+        data
+      );
+      return response.data.data;
+    } catch (error: any) {
+      console.error('Error al actualizar documento:', error);
+      if (error.response?.data) {
+        console.error('Error detallado:', error.response.data);
+        if (Array.isArray(error.response.data.message)) {
+          throw new Error(error.response.data.message.join(', '));
+        }
+        throw new Error(error.response.data.message || 'Error al actualizar documento');
+      }
+      throw new Error('Error al conectar con el servidor');
     }
   }
 }; 

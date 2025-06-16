@@ -2,17 +2,29 @@ import axios from 'axios';
 
 export const api = axios.create({
   baseURL: 'http://localhost:3000/spotsu/api/v1',
-  headers: {
-    'Content-Type': 'application/json',
-  },
 });
 
 // Interceptor para agregar el token de autenticación
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token');
-  if (token) {
+  // 1) Token de autenticación
+  const token = localStorage.getItem('auth_token') ?? localStorage.getItem('token');
+  if (token && config.headers) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+
+  // 2) Gestión de Content-Type
+  if (config.headers) {
+    // Cuando enviamos FormData dejamos que el navegador genere la cabecera con el boundary
+    if (config.data instanceof FormData) {
+      // Distintas implementaciones de Axios pueden guardar la cabecera en minúsculas o mayúsculas
+      delete (config.headers as any)['Content-Type'];
+      delete (config.headers as any)['content-type'];
+    } else if (!('Content-Type' in config.headers) && !('content-type' in config.headers)) {
+      // Para el resto de peticiones enviamos JSON por defecto si aún no se ha definido
+      config.headers['Content-Type'] = 'application/json';
+    }
+  }
+
   return config;
 });
 

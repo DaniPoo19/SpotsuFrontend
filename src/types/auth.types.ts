@@ -40,6 +40,8 @@ export interface User {
   role: Role;
   token?: string;
   exp?: number;
+  is_active: boolean;
+  created_at: string;
 }
 
 export interface Athlete {

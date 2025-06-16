@@ -46,30 +46,6 @@ export const LoginPage = () => {
     setError('');
   };
 
-  const validateForm = () => {
-    if (!formData.document_type_id) {
-      setError('Por favor seleccione el tipo de documento');
-      return false;
-    }
-
-    if (!formData.document_number.trim()) {
-      setError('Por favor ingrese su número de documento');
-      return false;
-    }
-
-    if (!/^\d+$/.test(formData.document_number)) {
-      setError('El número de documento debe contener solo números');
-      return false;
-    }
-
-    if (!formData.password) {
-      setError('Por favor ingrese su contraseña');
-      return false;
-    }
-
-    return true;
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');

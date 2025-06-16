@@ -3,6 +3,8 @@ import App from '../App';
 import { ParQForm } from '../pages/parq/ParQForm';
 import { LoginPage } from '../pages/auth/login';
 import { RegisterAccountPage } from '../pages/auth/register-account';
+import { Layout as AdminLayout } from '../pages/admin-dashboard/components/layout';
+import { DashboardPage } from '../pages/admin-dashboard/dashboard';
 
 const router = createBrowserRouter([
   {
@@ -21,6 +23,17 @@ const router = createBrowserRouter([
         path: '/par-q',
         element: <ParQForm />,
       },
+      {
+        path: '/admin',
+        element: <AdminLayout />,
+        children: [
+          {
+            path: '',
+            element: <DashboardPage />
+          },
+          // Aquí irán otras rutas del admin
+        ]
+      }
     ],
   },
 ],

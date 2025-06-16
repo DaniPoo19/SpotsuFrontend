@@ -9,7 +9,6 @@ import { UserProfilePage } from '@/pages/user-dashboard/profile';
 import { DocumentsPage } from '@/pages/user-dashboard/documents';
 import { PostulationsPage } from '@/pages/user-dashboard/postulations';
 import { PostulationDetailsPage } from '@/pages/user-dashboard/postulation-details';
-import { DashboardPage } from '@/pages/admin-dashboard/dashboard';
 import { ParQForm } from '@/pages/parq/ParQForm';
 import { PersonalDataForm } from '@/components/PersonalDataForm';
 import { Toaster } from 'react-hot-toast';
@@ -77,7 +76,7 @@ function App() {
               <AdminDashboardLayout />
             </ProtectedRoute>
           }>
-            <Route index element={<DashboardPage />} />
+        
             <Route path="home" element={<HomePage />} />
             <Route path="aspirants" element={<AspirantsPage />} />
             <Route path="aspirants/:id" element={<AspirantDetailsPage />} />

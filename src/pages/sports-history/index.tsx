@@ -4,27 +4,20 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { differenceInYears, parse } from 'date-fns';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { 
-  Search, Plus, X, Upload, Trophy, Calendar, Medal, 
-  FileCheck, ChevronDown, ChevronUp, Clipboard, GraduationCap,
-  AlertCircle, CheckCircle2, Loader2, Edit2, Trash2, Save, FileText, User, Mail
-} from 'lucide-react';
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { motion, AnimatePresence } from 'framer-motion';
-import { toast, Toaster } from 'sonner';
+import { toast,  } from 'sonner';
 import bloqueNuevo from '@/assets/bloquenuevo.png';
-import { sportsService } from '../../services/sports.service';
+import {  Loader2, FileText, Mail, GraduationCap, Plus, Search, Medal, Trophy, CheckCircle2, AlertCircle, X, ChevronUp, ChevronDown, Calendar, Edit2, Trash2, Upload, Save, Clipboard, FileCheck } from 'lucide-react';
+import { useAuth } from '../../contexts/AuthContext';
+import { sportsService, type AttachedDocumentType } from '../../services/sports.service';
 import { attachedDocumentsService } from '../../services/attached-documents.service';
 import { sportHistoriesService } from '../../services/sport-histories.service';
 import { sportsAchievementsService } from '../../services/sports-achievements.service';
+import { postulationService } from '../../services/postulation.service';
+import { api } from '../../services/api';
+import { authService } from '../../services/auth.service';
+import axios from 'axios';
 import { 
   Sport, 
   CompetitionCategory, 
@@ -38,19 +31,14 @@ import {
   PostulationDTO,
   AthleteDTO
 } from '../../types/dtos';
-import { Eye, EyeOff } from 'lucide-react';
-import { useAuth } from '../../contexts/AuthContext';
-import { postulationService } from '../../services/postulation.service';
-import { api } from '../../services/api';
-import { authService } from '../../services/auth.service';
-import axios from 'axios';
-import type { AttachedDocumentType } from '../../services/sports.service';
-
-const sports = [
-  'Fútbol', 'Baloncesto', 'Voleibol', 'Natación', 'Atletismo',
-  'Tenis', 'Béisbol', 'Gimnasia', 'Ciclismo', 'Boxeo',
-  'Karate', 'Taekwondo', 'Judo', 'Rugby', 'Ajedrez'
-];
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
 
 const today = new Date();
 
@@ -61,35 +49,23 @@ const achievementBase = z.object({
   competition_category_id: z.string().optional(),
   competition_hierarchy_id: z.string().optional(),
   achievement_date: z.string().optional(),
-  description: z.string().optional(),
   attached_document: z.any().optional(),
   attached_document_type_id: z.string().optional(),
   competitionCategory: z.string().optional(),
   competitionType: z.string().optional(),
   competitionName: z.string().optional(),
-  date: z.string().optional(),
-  position: z.string().optional(),
-  score: z.union([z.string(), z.number()]).optional()
 });
 
 const achievementSchema = achievementBase.superRefine((val, ctx) => {
   // Solo validar campos obligatorios si es un nuevo logro (sin id)
   if (!val.id) {
-    if (!val.achievement_type_id || val.achievement_type_id.trim() === '') {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['achievement_type_id'], message: 'El tipo de logro es requerido' });
-    }
     if (!val.competition_category_id || val.competition_category_id.trim() === '') {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['competition_category_id'], message: 'La categoría es requerida' });
     }
     if (!val.competition_hierarchy_id || val.competition_hierarchy_id.trim() === '') {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['competition_hierarchy_id'], message: 'El tipo de competencia es requerido' });
     }
-    if (!val.achievement_date || val.achievement_date.trim() === '') {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['achievement_date'], message: 'La fecha es requerida' });
-    }
-    if (!val.description || val.description.trim() === '') {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['description'], message: 'La descripción es requerida' });
-    }
+    // Se elimina la obligación de achievement_date porque el formulario no lo expone
   }
 });
 
@@ -120,15 +96,10 @@ export const SportsHistoryPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [isLoading, setIsLoading] = useState(true);
-  const [sportsHistory, setSportsHistory] = useState<SportHistory[]>([]);
-  const [showForm, setShowForm] = useState(false);
-  const [editingHistory, setEditingHistory] = useState<SportHistory | null>(null);
+
   const [postulation, setPostulation] = useState<PostulationDTO | null>(null);
   const [athlete, setAthlete] = useState<AthleteDTO | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [userData, setUserData] = useState<PersonDTO | null>(null);
-  const [userRole, setUserRole] = useState<UserRole | null>(null);
   const [postulationId, setPostulationId] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState('');
   const [sports, setSports] = useState<Sport[]>([]);
@@ -167,7 +138,7 @@ export const SportsHistoryPage: React.FC = () => {
   });
 
   // Obtener los campos del formulario
-  const { fields, append, remove } = useFieldArray({
+  const { fields, append, prepend, remove } = useFieldArray({
     control: form.control,
     name: "sportsHistory"
   });
@@ -191,7 +162,542 @@ export const SportsHistoryPage: React.FC = () => {
     return docName;
   };
 
-  // Verificación inicial de autenticación (ahora espera a que AuthContext termine de cargar)
+
+
+  const calculateExperience = (startDate: string | undefined, endDate: string | undefined) => {
+    if (!startDate || !endDate) return 0;
+    try {
+    const start = parse(startDate, 'yyyy-MM-dd', new Date());
+      const end = parse(endDate, 'yyyy-MM-dd', new Date());
+      if (isNaN(start.getTime()) || isNaN(end.getTime())) return 0;
+      const years = differenceInYears(end, start);
+      return years < 0 ? 0 : years;
+    } catch {
+      return 0;
+    }
+  };
+
+  const handleSportSelect = (sport: Sport) => {
+    if (!postulation) {
+      toast.error('No se encontró la postulación');
+      return;
+    }
+
+    if (!selectedSports.includes(sport.id)) {
+      setSelectedSports((prev) => [...prev, sport.id]);
+
+      // Insertar el nuevo deporte al inicio de la lista
+      prepend({
+        sport_id: sport.id,
+        sport: sport,
+        startDate: '',
+        endDate: '',
+        achievements: []
+      });
+
+      // Expandir automáticamente la tarjeta correspondiente
+      setExpandedSports((prev) => [...prev, sport.name]);
+    }
+
+    setShowSportSearch(false);
+    setSearchTerm('');
+  };
+
+  const toggleSportExpansion = (sportName: string) => {
+    if (!postulation) {
+      toast.error('No se encontró la postulación');
+      return;
+    }
+
+    setExpandedSports(prev => 
+      prev.includes(sportName) 
+        ? prev.filter(s => s !== sportName)
+        : [...prev, sportName]
+    );
+  };
+
+  const handleAddAchievement = (sportIndex: number) => {
+    if (!postulation) {
+      toast.error('No se encontró la postulación');
+      return;
+    }
+
+    const newAchievement: Achievement & { tempId: string } = {
+      achievement_type_id: '',
+      competition_category_id: '',
+      competition_hierarchy_id: '',
+      achievement_date: new Date().toISOString().split('T')[0],
+      description: '',
+      tempId: (window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`)
+    };
+
+    const currentAchievements = form.getValues(`sportsHistory.${sportIndex}.achievements`) || [];
+    form.setValue(`sportsHistory.${sportIndex}.achievements`, [...currentAchievements, newAchievement]);
+    setAchievementInProgress({ sportIndex, achievementIndex: currentAchievements.length });
+  };
+
+  const handleCategoryChange = async (categoryId: string, sportIndex: number, achievementIndex: number) => {
+    console.log('[SportsHistory][handleCategoryChange] Iniciando cambio de categoría:', {
+      categoryId,
+      sportIndex,
+      achievementIndex
+    });
+    
+    try {
+      setIsLoadingTypes(true);
+      
+      // Obtener tipos de competencia para la categoría
+      console.log('[SportsHistory][handleCategoryChange] Obteniendo tipos de competencia para categoría:', categoryId);
+      const response = await api.get(`/sports-competition-hierarchies/by-category/${categoryId}`);
+      const raw = response.data.data.map((item: any) => ({
+        id: item.competition_hierarchy?.id || item.id || '',
+        name: item.competition_hierarchy?.name || item.name || '',
+        competition_hierarchy: item.competition_hierarchy ?? item,
+        score: item.score ?? 0,
+        is_active: item.is_active ?? true
+      }));
+      // Filtrar duplicados por id
+      const unique: CompetitionHierarchy[] = Array.from(new Map(raw.map((t: any) => [t.id, t])).values()) as CompetitionHierarchy[];
+      competitionTypesCache[categoryId as string] = unique;
+      setLocalCompetitionTypes(unique);
+      setCompetitionTypes(unique);
+      
+    } catch (error: any) {
+      console.error('[SportsHistory][handleCategoryChange] Error al obtener tipos de competencia:', error);
+      toast.error('Error al cargar los tipos de competencia');
+    } finally {
+      setIsLoadingTypes(false);
+    }
+  };
+
+  const handleCompetitionTypeChange = (typeId: string, sportIndex: number, achievementIndex: number) => {
+    if (!postulation) {
+      toast.error('No se encontró la postulación');
+      return;
+    }
+
+    if (!typeId) {
+      toast.error('Por favor seleccione un tipo de competencia válido');
+      return;
+    }
+
+    // Obtener el tipo seleccionado
+    const selectedType = competitionTypes.find(type => type.id === typeId);
+                    if (selectedType) {
+      // Actualizar los valores del formulario
+      form.setValue(`sportsHistory.${sportIndex}.achievements.${achievementIndex}.competition_hierarchy_id`, typeId);
+                      form.setValue(
+                        `sportsHistory.${sportIndex}.achievements.${achievementIndex}.competitionType`,
+        selectedType.name || selectedType.competition_hierarchy?.name || ''
+      );
+    }
+  };
+
+  const handleAchievementComplete = (sportIndex: number, achievementIndex: number) => {
+    // Validar datos mínimos antes de cerrar la edición
+    const achievementData = form.getValues(`sportsHistory.${sportIndex}.achievements.${achievementIndex}`);
+
+    // Solo confirmar logro si hay categoría, tipo Y certificado
+    if (
+      !achievementData.competition_category_id ||
+      !achievementData.competition_hierarchy_id ||
+      !achievementData.attached_document            // <= archivo obligatorio
+    ) {
+      toast.error('Falta completar todos los campos (incluye el certificado)');
+      return;
+    }
+
+    // Marcar la edición como finalizada: simplemente quitamos el formulario en progreso
+    setAchievementInProgress(null);
+
+    // Mostrar en tabla y avisar al usuario
+    toast.success('Logro añadido localmente. No olvides presionar "Guardar Historial" para enviarlo.');
+  };
+
+  const handleEditAchievement = (sportIndex: number, achievementIndex: number) => {
+    if (!postulation) {
+      toast.error('No se encontró la postulación');
+      return;
+    }
+    setEditingAchievement({ sportIndex, achievementIndex });
+  };
+
+  const handleSaveEdit = async (sportIndex: number, achievementIndex: number) => {
+    if (!postulation) {
+      toast.error('No se encontró la postulación');
+      return;
+    }
+
+    const achievement = form.getValues(`sportsHistory.${sportIndex}.achievements.${achievementIndex}`);
+    const sport = form.getValues(`sportsHistory.${sportIndex}`);
+
+    try {
+      if (!achievement.id) {
+        // solo local: actualizar valores en formulario y cerrar edición
+        setEditingAchievement(null);
+        toast.success('Cambios guardados localmente. No olvides presionar "Guardar Historial".');
+        return;
+      }
+
+      if (achievement.id) {
+        await sportsService.updateSportsAchievement(achievement.id, {
+          achievement_type_id: achievement.achievement_type_id as string,
+          competition_category_id: achievement.competition_category_id as string,
+          competition_hierarchy_id: achievement.competition_hierarchy_id as string,
+          achievement_date: achievement.achievement_date as string,
+          name: achievement.competitionName || 'Competencia sin nombre',
+        });
+
+        if (achievement.attached_document && achievement.attached_document_type_id) {
+          await sportsService.uploadAttachedDocument({
+            sports_achievement_id: achievement.id,
+            attached_document_type_id: achievement.attached_document_type_id,
+            file: achievement.attached_document
+          });
+        }
+      }
+
+      setEditingAchievement(null);
+      toast.success('Logro deportivo actualizado correctamente');
+    } catch (error) {
+      console.error('Error al actualizar logro:', error);
+      toast.error('Error al actualizar logro deportivo');
+    }
+  };
+
+  const handleCancelAchievement = (sportIndex: number, achievementIndex: number) => {
+    if (!postulation) {
+      toast.error('No se encontró la postulación');
+      return;
+    }
+
+    const currentAchievements = form.getValues(`sportsHistory.${sportIndex}.achievements`);
+    form.setValue(
+      `sportsHistory.${sportIndex}.achievements`,
+      currentAchievements.filter((_, index) => index !== achievementIndex)
+    );
+    setAchievementInProgress(null);
+  };
+
+  const handleDeleteAchievement = async (sportIndex: number, achievementIndex: number) => {
+    if (!postulation) {
+      toast.error('No se encontró la postulación');
+      return;
+    }
+
+    const achievement = form.getValues(`sportsHistory.${sportIndex}.achievements.${achievementIndex}`);
+    
+    if (achievement.id) {
+      try {
+        await sportsService.deleteSportsAchievement(achievement.id);
+        const currentAchievements = form.getValues(`sportsHistory.${sportIndex}.achievements`);
+        form.setValue(
+          `sportsHistory.${sportIndex}.achievements`,
+          currentAchievements.filter((_, index) => index !== achievementIndex)
+        );
+        toast.success('Logro deportivo eliminado exitosamente');
+      } catch (error) {
+        console.error('Error al eliminar logro:', error);
+        toast.error('Error al eliminar logro deportivo');
+      }
+    }
+  };
+
+  const canSaveHistory = () => {
+    const sportsHist = form.getValues('sportsHistory');
+    const hasSports = sportsHist.length > 0;
+    const allSportsHaveAchievements = sportsHist.every(s => s.achievements && s.achievements.length > 0);
+    const hasRequiredDocuments = !!form.getValues("documents").MedicCertificate && !!form.getValues("documents").consentForm;
+    return hasSports && allSportsHaveAchievements && hasRequiredDocuments;
+  };
+
+  // Función para manejar errores de validación del formulario
+  const onFormError = (errors: any) => {
+    console.error('[SportsHistory][onFormError] Errores de validación:', JSON.parse(JSON.stringify(errors, null, 2)));
+    toast.error('Por favor corrige los errores antes de guardar');
+  };
+
+  const handleSubmit = async (data: z.infer<typeof formSchema>) => {
+    console.log('[SportsHistory][handleSubmit] Datos del formulario:', data);
+
+    if (!postulation) {
+      console.error('[SportsHistory][handleSubmit] Error: No se encontró la postulación');
+      toast.error('No se encontró la postulación');
+      return;
+    }
+    if (!user?.id) {
+      console.error('[SportsHistory][handleSubmit] Error: No se encontró el ID del usuario');
+      toast.error('No se ha encontrado el ID del usuario');
+      return;
+    }
+
+    // Limpiar logros incompletos para evitar fallos de validación/back
+    data.sportsHistory = data.sportsHistory.map((history: any) => {
+      const completed = (history.achievements || []).filter((ach: any) => {
+        return (
+          ach.id ||
+          (
+            ach.competition_category_id &&
+            ach.competition_hierarchy_id &&
+            (ach.description || ach.competitionName) &&
+            ach.attached_document   // se asegura que tenga certificado
+          )
+        );
+      });
+      return { ...history, achievements: completed };
+    });
+    console.log("FORM DATA FILTER", {DAT: data.sportsHistory })
+    setIsSubmitting(true);
+    try {
+      // Obtener catálogo completo de logros deportivos (puntajes predeterminados)
+      let achievementsCatalog: any[] = [];
+      try {
+        achievementsCatalog = await sportsAchievementsService.getAchievements();
+        console.log('[SportsHistory][handleSubmit] Catálogo de logros cargado:', achievementsCatalog.length);
+      } catch (catErr) {
+        console.warn('[SportsHistory][handleSubmit] No se pudo cargar el catálogo de logros:', catErr);
+      }
+
+      // Procesar cada historial deportivo
+      for (let i = 0; i < data.sportsHistory.length; i++) {
+        const sportHistory = data.sportsHistory[i];
+        console.log(`[SportsHistory][handleSubmit] Procesando deporte ${i + 1}/${data.sportsHistory.length}:`, sportHistory);
+      
+        const sport = sports.find(s => s.id === sportHistory.sport_id);
+        
+        if (!sport) {
+          console.error(`[SportsHistory][handleSubmit] Deporte no encontrado: ${sportHistory.sport_id}`);
+          throw new Error(`Deporte no encontrado: ${sportHistory.sport_id}`);
+        }
+
+        // 1. Crear la relación postulación-deporte
+        const experienceYears = calculateExperience(sportHistory.startDate, sportHistory.endDate);
+        console.log('[SportsHistory][handleSubmit] Creando relación postulación-deporte:', {
+          postulation_id: postulationId,
+          sport_id: sport.id,
+          experience_years: experienceYears,
+        });
+
+        const postulationSportResponse = await sportsService.createPostulationSport({
+          postulation_id: postulationId,
+          sport_id: sport.id,
+          experience_years: experienceYears,
+        });
+
+        console.log('[SportsHistory][handleSubmit] Respuesta de creación postulación-deporte:', postulationSportResponse);
+
+        if (!postulationSportResponse || !postulationSportResponse.id) {
+          console.error('[SportsHistory][handleSubmit] Error: No se pudo crear la relación postulación-deporte');
+          throw new Error('No se pudo crear la relación postulación-deporte');
+        }
+
+        // 2. Procesar los logros nuevos
+        console.log(sportHistory.achievements);
+        const achievements = sportHistory.achievements.filter(a => !a.id);
+        console.log(`[SportsHistory][handleSubmit] Procesando ${achievements.length} logros nuevos`);
+        for (const achievement of achievements) {
+          console.log('[SportsHistory][handleSubmit] Procesando logro:', achievement);
+
+          // 2.a Crear (o asegurar) el SportsAchievement base para la combinación categoría-jerarquía
+          let sportsAchievementId = '';
+          try {
+            // 1) Intentar reutilizar un logro existente con misma categoría + jerarquía
+            const existing = achievementsCatalog.find((ac: any) =>
+              ac.sports_competition_category?.id === achievement.competition_category_id &&
+              ac.competition_hierarchy?.id === achievement.competition_hierarchy_id
+            );
+
+            if (existing) {
+              sportsAchievementId = existing.id;
+              console.log('[SportsHistory][handleSubmit] Reutilizando logro existente:', existing);
+            } else {
+              // 2) No existe un logro predefinido con esa combinación. 
+              toast.error('No se encontró un logro predefinido para la categoría y tipo seleccionados. Contacte al administrador.');
+              console.error('[SportsHistory][handleSubmit] No existe SportsAchievement para', achievement);
+              continue; // omitimos este logro para evitar score 0
+            }
+          } catch (err: any) {
+            console.warn('[SportsHistory][handleSubmit] Error obteniendo SportsAchievement. Detalle:', err?.response?.data || err);
+            toast.error('Error al procesar el logro deportivo, intente nuevamente.');
+            continue;
+          }
+
+          // Si no se adjuntó certificado omitimos este logro (el backend lo requiere)
+          if (!achievement.attached_document) {
+            console.warn('[SportsHistory][handleSubmit] Logro omitido por no tener certificado adjunto');
+            continue;
+          }
+
+          // 2.b Crear la relación PostulationSportAchievement y subir archivo
+          const achievementPayload = {
+            postulation_sport_id: postulationSportResponse.id,
+            sport_achievement_id: sportsAchievementId,
+            competition_name: achievement.competitionName || 'Competencia sin nombre',
+            file: achievement.attached_document || null,
+          } as any;
+
+          console.log('[SportsHistory][handleSubmit] Payload del logro vinculado:', achievementPayload);
+
+          const linkedAchievement = await sportsService.createSportsAchievementWithLink(
+            postulationSportResponse.id,
+            achievementPayload
+          );
+          console.log('[SportsHistory][handleSubmit] Logro vinculado:', linkedAchievement);
+
+          if (achievement.attached_document && !linkedAchievement?.attached_document_id) {
+            console.log('[SportsHistory][handleSubmit] Subiendo documento adjunto manualmente');
+            await handleUploadFiles(linkedAchievement.sport_achievement_id || linkedAchievement.id, 'achievement');
+          }
+        }
+         
+      }
+      
+
+      let documentsUploaded = false;
+
+      // Subir documentos generales
+      if (data.documents) {
+        console.log('[SportsHistory][handleSubmit] Procesando documentos generales:', data.documents);
+        try {
+          // Esta validacion no se debe hacer aqui
+          const existing = await attachedDocumentsService.getDocuments();
+          const byPostulation = existing.filter((d: any) => d.postulation?.id === postulationId);
+          const existingTypes = new Set(byPostulation.map((d: any) => d.attached_document_type_id));
+
+          const codeToLabel: Record<string, string> = {
+            'CONSENT_FORM': 'Consentimiento Informado',
+            'MEDICAL_CERTIFICATE': 'Certificado Médico'
+          };
+
+          const docsToUpload: Array<{file: File | undefined | null; code: string}> = [
+             { file: (data.documents as any).consentForm, code: 'CONSENT_FORM' },
+             { file: (data.documents as any).MedicCertificate, code: 'MEDICAL_CERTIFICATE' }
+           ];
+
+          const getTypeId = (code: string): string | undefined => {
+            const label = codeToLabel[code];
+            if (!label) return undefined;
+            const found = attachedDocTypes.find(t => t.name === code || t.name === label);
+            return found?.id;
+          };
+
+          for (const docItem of docsToUpload) {
+            if (docItem.file) {
+              const realTypeId = getTypeId(docItem.code);
+              if (!realTypeId) {
+                console.warn('[SportsHistory][handleSubmit] Tipo de documento no encontrado para', docItem.code);
+                continue;
+              }
+              if (realTypeId && existingTypes.has(realTypeId)) {
+                console.log('[SportsHistory] Documento ya existente, se omite', docItem.code);
+                continue;
+              }
+              console.log('[SportsHistory][handleSubmit] Subiendo documento:', docItem);
+              try {
+                const uploadedDoc = await attachedDocumentsService.uploadDocument({
+                  postulation_id: postulationId,
+                  attached_document_type_id: realTypeId,
+                  file: docItem.file as File
+                });
+                console.log('[SportsHistory][handleSubmit] Documento subido:', uploadedDoc);
+                documentsUploaded = true;
+              } catch (err) {
+                const lbl = codeToLabel[docItem.code] || docItem.code;
+                console.error(`[SportsHistory][handleSubmit] Error subiendo documento ${lbl}:`, err);
+                toast.error(`Error al subir el documento ${lbl}`);
+              }
+            }
+          }
+        } catch (err) {
+          console.error('[SportsHistory][handleSubmit] Error verificando documentos existentes:', err);
+          toast.error('Error al verificar documentos existentes');
+        }
+      }
+
+      // Marcar postulación como completada
+      console.log('[SportsHistory][handleSubmit] Marcando postulación como completada');
+      await postulationService.updatePostulationStatus(postulationId, 'completed');
+
+      console.log('[SportsHistory][handleSubmit] Historial deportivo guardado exitosamente');
+      
+      // Mostrar mensajes de éxito
+      toast.success('Historial deportivo guardado exitosamente');
+      if (documentsUploaded) {
+        toast.success('Documentos guardados exitosamente');
+      }
+
+      // Redireccionar al inicio del panel de usuario después de la confirmación
+      console.log('[SportsHistory][handleSubmit] Redirigiendo al inicio del dashboard');
+      setTimeout(() => {
+        navigate('/user-dashboard/home');
+      }, 1200);
+
+    } catch (error) {
+      console.error('[SportsHistory][handleSubmit] Error al guardar historial deportivo:', error);
+      toast.error('Error al guardar el historial deportivo');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      const newFiles = Array.from(e.target.files);
+      setSelectedFiles(prev => [...prev, ...newFiles]);
+    }
+  };
+
+  const handleRemoveFile = (index: number) => {
+    setSelectedFiles(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleUploadFiles = async (referenceId: string, referenceType: 'sport_history' | 'achievement') => {
+    if (selectedFiles.length === 0) return;
+    if (!postulationId) {
+      toast.error('No se ha encontrado una postulación activa');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const uploadPromises = selectedFiles.map(file => {
+        const documentData: CreateAttachedDocumentDTO = {
+          file,
+          attached_document_type_id: 'GENERIC',
+          postulation_id: postulationId
+        } as any;
+        return attachedDocumentsService.uploadDocument(documentData);
+      });
+
+      const uploadedDocs = await Promise.all(uploadPromises);
+      setUploadedDocuments(prev => [...prev, ...uploadedDocs]);
+      setSelectedFiles([]);
+      toast.success('Archivos subidos exitosamente');
+    } catch (error) {
+      console.error('Error al subir archivos:', error);
+      toast.error('Error al subir archivos');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteDocument = async (documentId: string) => {
+    if (!postulationId) {
+      toast.error('No se ha encontrado una postulación activa');
+      return;
+    }
+
+    try {
+      await attachedDocumentsService.deleteDocument(documentId);
+      setUploadedDocuments(prev => prev.filter(doc => doc.id !== documentId));
+      toast.success('Documento eliminado exitosamente');
+    } catch (error) {
+      console.error('Error al eliminar documento:', error);
+      toast.error('Error al eliminar documento');
+    }
+  };
+
+    // Verificación inicial de autenticación (ahora espera a que AuthContext termine de cargar)
   useEffect(() => {
     const initializeAuth = async () => {
       if (authLoading) return; // Esperar a que el contexto termine de cargar
@@ -225,7 +731,7 @@ export const SportsHistoryPage: React.FC = () => {
     };
 
     initializeAuth();
-  }, [authLoading, user, navigate, location]);
+  }, [authLoading, user, location]);
 
   useEffect(() => {
     const initializePage = async () => {
@@ -324,8 +830,6 @@ export const SportsHistoryPage: React.FC = () => {
               attached_document: (ach.attached_document || docsByAchievement[ach.id] || null) as any
             }));
           });
-
-          setSportsHistory(formattedHistory as unknown as SportHistory[]);
           
           // Actualizar el estado de deportes seleccionados
           setSelectedSports(formattedHistory.map((history: { sport_id: string }) => history.sport_id));
@@ -351,11 +855,9 @@ export const SportsHistoryPage: React.FC = () => {
             navigate('/login', { state: { from: location } });
           } else {
             console.error('Error de API:', error.response?.data);
-            setError(error.response?.data?.message || 'Error al cargar los datos');
           }
         } else {
           console.error('Error desconocido:', error);
-          setError('Error al cargar los datos');
         }
       } finally {
         setIsLoading(false);
@@ -366,12 +868,11 @@ export const SportsHistoryPage: React.FC = () => {
     if (user) {
       initializePage();
     }
-  }, [user, navigate, location, form]);
+  }, [user, location, form]);
 
   // Cargar deportes y categorías desde el backend
   useEffect(() => {
     const loadInitialData = async () => {
-      console.log('[SportsHistory][loadInitialData] Iniciando carga de datos iniciales');
       try {
         setIsLoading(true);
         setIsLoadingSports(true);
@@ -408,13 +909,6 @@ export const SportsHistoryPage: React.FC = () => {
         console.log('[SportsHistory][loadInitialData] Cargando historial deportivo para la postulación:', postId);
         const history = await sportHistoriesService.getSportHistoriesByPostulation(postId);
         console.log('[SportsHistory][loadInitialData] Historial deportivo cargado:', history);
-        setSportsHistory(history as unknown as SportHistory[]);
-
-        // Cargar categorías
-        console.log('[SportsHistory][loadInitialData] Cargando categorías de competencia');
-        const categoriesData = await api.get('/sports-competition-categories');
-        console.log('[SportsHistory][loadInitialData] Categorías cargadas:', categoriesData.data);
-        setCategories(categoriesData.data.data);
 
         // Cargar tipos de documento adjunto
         console.log('[SportsHistory][loadInitialData] Cargando tipos de documentos adjuntos');
@@ -439,7 +933,7 @@ export const SportsHistoryPage: React.FC = () => {
     if (user) {
       loadInitialData();
     }
-  }, [user, navigate, location, form]);
+  }, [user, location, form]);
 
   // Filtrar deportes cuando cambia el término de búsqueda
   useEffect(() => {
@@ -454,558 +948,6 @@ export const SportsHistoryPage: React.FC = () => {
     setFilteredSports(filtered);
     }
   }, [searchTerm, selectedSports, sports]);
-
-  const calculateExperience = (startDate: string | undefined, endDate: string | undefined) => {
-    if (!startDate || !endDate) return 0;
-    try {
-    const start = parse(startDate, 'yyyy-MM-dd', new Date());
-      const end = parse(endDate, 'yyyy-MM-dd', new Date());
-      if (isNaN(start.getTime()) || isNaN(end.getTime())) return 0;
-      const years = differenceInYears(end, start);
-      return years < 0 ? 0 : years;
-    } catch {
-      return 0;
-    }
-  };
-
-  const handleSportSelect = (sport: Sport) => {
-    if (!postulation) {
-      toast.error('No se encontró la postulación');
-      return;
-    }
-
-    if (!selectedSports.includes(sport.id)) {
-      setSelectedSports([...selectedSports, sport.id]);
-      append({
-        sport_id: sport.id,
-        sport: sport,
-        achievements: []
-      });
-    }
-    setShowSportSearch(false);
-    setSearchTerm('');
-  };
-
-  const toggleSportExpansion = (sportName: string) => {
-    if (!postulation) {
-      toast.error('No se encontró la postulación');
-      return;
-    }
-
-    setExpandedSports(prev => 
-      prev.includes(sportName) 
-        ? prev.filter(s => s !== sportName)
-        : [...prev, sportName]
-    );
-  };
-
-  const handleAddAchievement = (sportIndex: number) => {
-    if (!postulation) {
-      toast.error('No se encontró la postulación');
-      return;
-    }
-
-    const newAchievement: Achievement & { tempId: string } = {
-      achievement_type_id: '',
-      competition_category_id: '',
-      competition_hierarchy_id: '',
-      achievement_date: new Date().toISOString().split('T')[0],
-      description: '',
-      tempId: (window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`)
-    };
-
-    const currentAchievements = form.getValues(`sportsHistory.${sportIndex}.achievements`) || [];
-    form.setValue(`sportsHistory.${sportIndex}.achievements`, [...currentAchievements, newAchievement]);
-    setAchievementInProgress({ sportIndex, achievementIndex: currentAchievements.length });
-  };
-
-  const handleCategoryChange = async (categoryId: string, sportIndex: number, achievementIndex: number) => {
-    console.log('[SportsHistory][handleCategoryChange] Iniciando cambio de categoría:', {
-      categoryId,
-      sportIndex,
-      achievementIndex
-    });
-    
-    try {
-      setIsLoadingTypes(true);
-      
-      // Obtener tipos de competencia para la categoría
-      console.log('[SportsHistory][handleCategoryChange] Obteniendo tipos de competencia para categoría:', categoryId);
-      const response = await api.get(`/sports-competition-hierarchies/by-category/${categoryId}`);
-      const raw = response.data.data.map((item: any) => ({
-        id: item.competition_hierarchy?.id || item.id || '',
-        name: item.competition_hierarchy?.name || item.name || '',
-        competition_hierarchy: item.competition_hierarchy ?? item,
-        score: item.score ?? 0,
-        is_active: item.is_active ?? true
-      }));
-      // Filtrar duplicados por id
-      const unique: CompetitionHierarchy[] = Array.from(new Map(raw.map((t: any) => [t.id, t])).values()) as CompetitionHierarchy[];
-      competitionTypesCache[categoryId as string] = unique;
-      setLocalCompetitionTypes(unique);
-      setCompetitionTypes(unique);
-      
-    } catch (error: any) {
-      console.error('[SportsHistory][handleCategoryChange] Error al obtener tipos de competencia:', error);
-      toast.error('Error al cargar los tipos de competencia');
-    } finally {
-      setIsLoadingTypes(false);
-    }
-  };
-
-  const handleCompetitionTypeChange = (typeId: string, sportIndex: number, achievementIndex: number) => {
-    if (!postulation) {
-      toast.error('No se encontró la postulación');
-      return;
-    }
-
-    if (!typeId) {
-      toast.error('Por favor seleccione un tipo de competencia válido');
-      return;
-    }
-
-    // Obtener el tipo seleccionado
-    const selectedType = competitionTypes.find(type => type.id === typeId);
-                    if (selectedType) {
-      // Actualizar los valores del formulario
-      form.setValue(`sportsHistory.${sportIndex}.achievements.${achievementIndex}.competition_hierarchy_id`, typeId);
-                      form.setValue(
-                        `sportsHistory.${sportIndex}.achievements.${achievementIndex}.competitionType`,
-        selectedType.name || selectedType.competition_hierarchy?.name || ''
-      );
-    }
-  };
-
-  const handleAchievementComplete = async (sportIndex: number, achievementIndex: number) => {
-    // Evitar doble clic mientras se procesa
-    if (isSubmittingAchievement) return;
-
-    console.log('[SportsHistory][handleAchievementComplete] Iniciando guardado de logro:', {
-      sportIndex,
-      achievementIndex
-    });
-
-    try {
-      setIsSubmittingAchievement(true);
-      
-      const achievementData = form.getValues(`sportsHistory.${sportIndex}.achievements.${achievementIndex}`);
-      console.log('[SportsHistory][handleAchievementComplete] Datos del logro a guardar:', achievementData);
-
-      // Validar datos del logro
-      if (!achievementData.competition_category_id || !achievementData.competition_hierarchy_id) {
-        console.error('[SportsHistory][handleAchievementComplete] Faltan datos requeridos:', achievementData);
-        toast.error('Por favor completa todos los campos requeridos');
-        return;
-      }
-
-      // 1. Asegurar que exista la relación postulation-sport para este deporte
-      const sportHistoryData = form.getValues(`sportsHistory.${sportIndex}`);
-      const sportId = sportHistoryData?.sport_id || sports[sportIndex]?.id;
-
-      if (!sportId) {
-        toast.error('No se encontró el deporte seleccionado');
-        return;
-      }
-
-      let postulationSportId = postulationSportsMap[sportId];
-
-      if (!postulationSportId) {
-        const experienceYears = calculateExperience(sportHistoryData.startDate, sportHistoryData.endDate);
-        console.log('[SportsHistory][handleAchievementComplete] Creando PostulationSport para deporte', sportId);
-        const postulationSportResp = await sportsService.createPostulationSport({
-          postulation_id: postulationId,
-          sport_id: sportId,
-          experience_years: experienceYears
-        });
-
-        postulationSportId = postulationSportResp.id;
-        setPostulationSportsMap(prev => ({ ...prev, [sportId]: postulationSportId }));
-      }
-
-      // 2. Crear logro y vincularlo en un solo paso
-      console.log('[SportsHistory][handleAchievementComplete] Creando y vinculando logro');
-      const linkedAchievement = await sportsService.createSportsAchievementWithLink(postulationSportId, {
-        competition_category_id: achievementData.competition_category_id as string,
-        competition_hierarchy_id: achievementData.competition_hierarchy_id as string,
-        name: achievementData.competitionName || '',
-        description: achievementData.description || '',
-        date: achievementData.achievement_date,
-        position: achievementData.position || '',
-        score: '0',
-        file: achievementData.attached_document || null,
-      } as any);
-      console.log('[SportsHistory][handleAchievementComplete] Logro vinculado:', linkedAchievement);
-
-      // 3. Actualizar formulario con ID real para evitar duplicados
-      form.setValue(`sportsHistory.${sportIndex}.achievements.${achievementIndex}.id`, linkedAchievement.sport_achievement_id || linkedAchievement.id);
-
-      // Finalizar
-      setAchievementInProgress(null);
-      
-      // Recargar historial deportivo
-      console.log('[SportsHistory][handleAchievementComplete] Recargando historial deportivo');
-      const updatedHistory = await sportHistoriesService.getSportHistoriesByPostulation(postulationId);
-      console.log('[SportsHistory][handleAchievementComplete] Historial actualizado:', updatedHistory);
-      setSportsHistory(updatedHistory as unknown as SportHistory[]);
-
-      toast.success('Logro guardado exitosamente');
-    } catch (error: any) {
-      console.error('[SportsHistory][handleAchievementComplete] Error al guardar logro:', error);
-      toast.error(error.message || 'Error al guardar el logro');
-    } finally {
-      setIsSubmittingAchievement(false);
-    }
-  };
-
-  const handleEditAchievement = (sportIndex: number, achievementIndex: number) => {
-    if (!postulation) {
-      toast.error('No se encontró la postulación');
-      return;
-    }
-    setEditingAchievement({ sportIndex, achievementIndex });
-  };
-
-  const handleSaveEdit = async (sportIndex: number, achievementIndex: number) => {
-    if (!postulation) {
-      toast.error('No se encontró la postulación');
-      return;
-    }
-
-    const achievement = form.getValues(`sportsHistory.${sportIndex}.achievements.${achievementIndex}`);
-    const sport = form.getValues(`sportsHistory.${sportIndex}`);
-
-    try {
-      if (achievement.id) {
-        await sportsService.updateSportsAchievement(achievement.id, {
-          achievement_type_id: achievement.achievement_type_id as string,
-          competition_category_id: achievement.competition_category_id as string,
-          competition_hierarchy_id: achievement.competition_hierarchy_id as string,
-          achievement_date: achievement.achievement_date as string,
-          description: (achievement.description || '') as string
-        });
-
-        if (achievement.attached_document && achievement.attached_document_type_id) {
-          await sportsService.uploadAttachedDocument({
-            sports_achievement_id: achievement.id,
-            attached_document_type_id: achievement.attached_document_type_id,
-            file: achievement.attached_document
-          });
-        }
-      }
-
-      setEditingAchievement(null);
-      toast.success('Logro deportivo actualizado exitosamente');
-    } catch (error) {
-      console.error('Error al actualizar logro:', error);
-      toast.error('Error al actualizar logro deportivo');
-    }
-  };
-
-  const handleCancelAchievement = (sportIndex: number, achievementIndex: number) => {
-    if (!postulation) {
-      toast.error('No se encontró la postulación');
-      return;
-    }
-
-    const currentAchievements = form.getValues(`sportsHistory.${sportIndex}.achievements`);
-    form.setValue(
-      `sportsHistory.${sportIndex}.achievements`,
-      currentAchievements.filter((_, index) => index !== achievementIndex)
-    );
-    setAchievementInProgress(null);
-  };
-
-  const handleDeleteAchievement = async (sportIndex: number, achievementIndex: number) => {
-    if (!postulation) {
-      toast.error('No se encontró la postulación');
-      return;
-    }
-
-    const achievement = form.getValues(`sportsHistory.${sportIndex}.achievements.${achievementIndex}`);
-    
-    if (achievement.id) {
-      try {
-        await sportsService.deleteSportsAchievement(achievement.id);
-        const currentAchievements = form.getValues(`sportsHistory.${sportIndex}.achievements`);
-        form.setValue(
-          `sportsHistory.${sportIndex}.achievements`,
-          currentAchievements.filter((_, index) => index !== achievementIndex)
-        );
-        toast.success('Logro deportivo eliminado exitosamente');
-      } catch (error) {
-        console.error('Error al eliminar logro:', error);
-        toast.error('Error al eliminar logro deportivo');
-      }
-    }
-  };
-
-  const canSaveHistory = () => {
-    const sportsHist = form.getValues('sportsHistory');
-    const hasSports = sportsHist.length > 0;
-    const allSportsHaveAchievements = sportsHist.every(s => s.achievements && s.achievements.length > 0);
-    return hasSports && allSportsHaveAchievements;
-  };
-
-  // Función para manejar errores de validación del formulario
-  const onFormError = (errors: any) => {
-    console.error('[SportsHistory][onFormError] Errores de validación:', JSON.parse(JSON.stringify(errors, null, 2)));
-    toast.error('Por favor corrige los errores antes de guardar');
-  };
-
-  const handleSubmit = async (data: z.infer<typeof formSchema>) => {
-    console.log('[SportsHistory][handleSubmit] Iniciando guardado del historial deportivo');
-    console.log('[SportsHistory][handleSubmit] Datos del formulario:', data);
-
-    if (!postulation) {
-      console.error('[SportsHistory][handleSubmit] Error: No se encontró la postulación');
-      toast.error('No se encontró la postulación');
-      return;
-    }
-
-    if (!postulationId) {
-      console.log('[SportsHistory][handleSubmit] No hay ID de postulación, intentando crear una nueva');
-      try {
-        const newPostulation = await postulationService.createPostulation();
-        console.log('[SportsHistory][handleSubmit] Nueva postulación creada:', newPostulation);
-        setPostulationId(newPostulation.id);
-      } catch (error) {
-        console.error('[SportsHistory][handleSubmit] Error al crear postulación:', error);
-        toast.error('No se pudo crear una nueva postulación. Por favor, intente nuevamente.');
-        return;
-      }
-    }
-
-    if (!user?.id) {
-      console.error('[SportsHistory][handleSubmit] Error: No se encontró el ID del usuario');
-      toast.error('No se ha encontrado el ID del usuario');
-      return;
-    }
-
-    // Limpiar logros incompletos para evitar fallos de validación/back
-    data.sportsHistory = data.sportsHistory.map((history: any) => {
-      const completed = (history.achievements || []).filter((ach: any) => {
-        return (
-          ach.id ||
-          (ach.achievement_type_id && ach.competition_category_id && ach.competition_hierarchy_id && ach.achievement_date && (ach.description || ach.competitionName))
-        );
-      });
-      return { ...history, achievements: completed };
-    });
-
-    setIsSubmitting(true);
-    try {
-      // Procesar cada historial deportivo
-      for (let i = 0; i < data.sportsHistory.length; i++) {
-        const sportHistory = data.sportsHistory[i];
-        console.log(`[SportsHistory][handleSubmit] Procesando deporte ${i + 1}/${data.sportsHistory.length}:`, sportHistory);
-        
-        const sport = sports.find(s => s.id === sportHistory.sport_id);
-        
-        if (!sport) {
-          console.error(`[SportsHistory][handleSubmit] Deporte no encontrado: ${sportHistory.sport_id}`);
-          throw new Error(`Deporte no encontrado: ${sportHistory.sport_id}`);
-        }
-
-        // 1. Crear la relación postulación-deporte
-        const experienceYears = calculateExperience(sportHistory.startDate, sportHistory.endDate);
-        console.log('[SportsHistory][handleSubmit] Creando relación postulación-deporte:', {
-          postulation_id: postulationId,
-          sport_id: sport.id,
-          experience_years: experienceYears
-        });
-
-        const postulationSportResponse = await sportsService.createPostulationSport({
-          postulation_id: postulationId,
-          sport_id: sport.id,
-          experience_years: experienceYears
-        });
-
-        console.log('[SportsHistory][handleSubmit] Respuesta de creación postulación-deporte:', postulationSportResponse);
-
-        if (!postulationSportResponse || !postulationSportResponse.id) {
-          console.error('[SportsHistory][handleSubmit] Error: No se pudo crear la relación postulación-deporte');
-          throw new Error('No se pudo crear la relación postulación-deporte');
-        }
-
-        // 2. Procesar los logros nuevos
-        const achievements = sportHistory.achievements.filter(a => !a.id);
-        console.log(`[SportsHistory][handleSubmit] Procesando ${achievements.length} logros nuevos`);
-
-        for (const achievement of achievements) {
-          console.log('[SportsHistory][handleSubmit] Procesando logro:', achievement);
-          
-          const achievementPayload = {
-            sport_history_id: postulationSportResponse.id,
-            achievement_type_id: achievement.achievement_type_id,
-            competition_category_id: achievement.competition_category_id as string,
-            competition_hierarchy_id: achievement.competition_hierarchy_id as string,
-            name: achievement.competitionName || '',
-            description: achievement.description,
-            date: achievement.achievement_date,
-            position: achievement.position || '',
-            score: achievement.score || '0',
-            postulation_id: postulationId as string,
-            file: achievement.attached_document || null
-          } as any;
-
-          console.log('[SportsHistory][handleSubmit] Payload del logro:', achievementPayload);
-
-          const linkedAchievement = await sportsService.createSportsAchievementWithLink(
-            postulationSportResponse.id, 
-            achievementPayload
-          );
-
-          console.log('[SportsHistory][handleSubmit] Logro creado:', linkedAchievement);
-
-          if (achievement.attached_document && !linkedAchievement?.attached_document_id) {
-            console.log('[SportsHistory][handleSubmit] Subiendo documento adjunto manualmente');
-            await handleUploadFiles(linkedAchievement.sport_achievement_id || linkedAchievement.id, 'achievement');
-          }
-        }
-      }
-
-      let documentsUploaded = false;
-
-      // Subir documentos generales
-      if (data.documents) {
-        console.log('[SportsHistory][handleSubmit] Procesando documentos generales:', data.documents);
-        try {
-          const existing = await attachedDocumentsService.getDocuments();
-          const byPostulation = existing.filter((d: any) => d.postulation?.id === postulationId);
-          const existingTypes = new Set(byPostulation.map((d: any) => d.attachedDocumentType?.name));
-
-          const codeToLabel: Record<string, string> = {
-            'CONSENT_FORM': 'Consentimiento Informado',
-            'MEDICAL_CERTIFICATE': 'Certificado Médico'
-          };
-
-          const docsToUpload: Array<{file: File | undefined | null; code: string}> = [
-             { file: (data.documents as any).consentForm, code: 'CONSENT_FORM' },
-             { file: (data.documents as any).MedicCertificate, code: 'MEDICAL_CERTIFICATE' }
-           ];
-
-          const getTypeId = (code: string): string | undefined => {
-            const label = codeToLabel[code];
-            if (!label) return undefined;
-            const type = attachedDocTypes.find(t => t.name === code || t.name === label);
-            return type?.id;
-          };
-
-          for (const docItem of docsToUpload) {
-            if (docItem.file) {
-              const realTypeId = getTypeId(docItem.code);
-              if (!realTypeId) {
-                console.warn('[SportsHistory][handleSubmit] Tipo de documento no encontrado para', docItem.code);
-                continue;
-              }
-              if (existingTypes.has(realTypeId)) {
-                console.log('[SportsHistory] Documento ya existente, se omite', docItem.code);
-                continue;
-              }
-              console.log('[SportsHistory][handleSubmit] Subiendo documento:', docItem);
-              try {
-                const uploadedDoc = await attachedDocumentsService.uploadDocument({
-                  postulation_id: postulationId,
-                  attached_document_type_id: realTypeId,
-                  file: docItem.file as File
-                });
-                console.log('[SportsHistory][handleSubmit] Documento subido:', uploadedDoc);
-                documentsUploaded = true;
-              } catch (err) {
-                const lbl = codeToLabel[docItem.code] || docItem.code;
-                console.error(`[SportsHistory][handleSubmit] Error subiendo documento ${lbl}:`, err);
-                toast.error(`Error al subir el documento ${lbl}`);
-              }
-            }
-          }
-        } catch (err) {
-          console.error('[SportsHistory][handleSubmit] Error verificando documentos existentes:', err);
-          toast.error('Error al verificar documentos existentes');
-        }
-      }
-
-      // Marcar postulación como completada
-      console.log('[SportsHistory][handleSubmit] Marcando postulación como completada');
-      await postulationService.updatePostulationStatus(postulationId, 'completed');
-
-      console.log('[SportsHistory][handleSubmit] Historial deportivo guardado exitosamente');
-      
-      // Mostrar mensajes de éxito
-      toast.success('Historial deportivo guardado exitosamente');
-      if (documentsUploaded) {
-        toast.success('Documentos guardados exitosamente');
-      }
-
-      // Redireccionar a los detalles de la postulación
-      console.log('[SportsHistory][handleSubmit] Redirigiendo a mis postulaciones');
-      setTimeout(() => {
-        navigate('/user-dashboard/postulations');
-      }, 1500);
-
-    } catch (error) {
-      console.error('[SportsHistory][handleSubmit] Error al guardar historial deportivo:', error);
-      toast.error('Error al guardar el historial deportivo');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      const newFiles = Array.from(e.target.files);
-      setSelectedFiles(prev => [...prev, ...newFiles]);
-    }
-  };
-
-  const handleRemoveFile = (index: number) => {
-    setSelectedFiles(prev => prev.filter((_, i) => i !== index));
-  };
-
-  const handleUploadFiles = async (referenceId: string, referenceType: 'sport_history' | 'achievement') => {
-    if (selectedFiles.length === 0) return;
-    if (!postulationId) {
-      toast.error('No se ha encontrado una postulación activa');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const uploadPromises = selectedFiles.map(file => {
-        const documentData: CreateAttachedDocumentDTO = {
-          file,
-          attached_document_type_id: 'GENERIC',
-          postulation_id: postulationId
-        } as any;
-        return attachedDocumentsService.uploadDocument(documentData);
-      });
-
-      const uploadedDocs = await Promise.all(uploadPromises);
-      setUploadedDocuments(prev => [...prev, ...uploadedDocs]);
-      setSelectedFiles([]);
-      toast.success('Archivos subidos exitosamente');
-    } catch (error) {
-      console.error('Error al subir archivos:', error);
-      toast.error('Error al subir archivos');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleDeleteDocument = async (documentId: string) => {
-    if (!postulationId) {
-      toast.error('No se ha encontrado una postulación activa');
-      return;
-    }
-
-    try {
-      await attachedDocumentsService.deleteDocument(documentId);
-      setUploadedDocuments(prev => prev.filter(doc => doc.id !== documentId));
-      toast.success('Documento eliminado exitosamente');
-    } catch (error) {
-      console.error('Error al eliminar documento:', error);
-      toast.error('Error al eliminar documento');
-    }
-  };
 
   useEffect(() => {
     const fetchPostulationId = async () => {
@@ -1023,6 +965,7 @@ export const SportsHistoryPage: React.FC = () => {
         const response = await api.get(`/postulations/${postulationId}`);
         if (response.data) {
           setPostulation(response.data);
+          console.log({data: response.data})
           setPostulationId(postulationId);
         } else {
           console.error('No se encontraron datos de la postulación');
@@ -1039,7 +982,7 @@ export const SportsHistoryPage: React.FC = () => {
     if (user) {
       fetchPostulationId();
     }
-  }, [user, navigate, location]);
+  }, [user]);
 
   // Agregar este useEffect para cargar las categorías al inicio
   useEffect(() => {
@@ -1098,7 +1041,8 @@ export const SportsHistoryPage: React.FC = () => {
                 id: h.id,
                 name: h.name,
                 competition_hierarchy: h,
-                score: h.score ?? 0,
+                //  El puntaje real viene en ach.score
+                score: (typeof ach.score === 'number' ? ach.score : 0),
                 is_active: h.is_active ?? true,
               } as any);
             }
@@ -1431,7 +1375,7 @@ export const SportsHistoryPage: React.FC = () => {
                                         Fecha de Inicio
                                       </FormLabel>
                                       <FormControl>
-                                        <Input type="date" {...field} className="focus-visible:ring-[#006837]" />
+                                        <Input type="date" {...field} value={field.value || ''} className="focus-visible:ring-[#006837]" />
                                       </FormControl>
                                       {(errorMsg || form.formState.errors?.sportsHistory?.[sportIndex]?.startDate) && (
                                         <div className="text-red-500 text-xs mt-1">
@@ -1465,7 +1409,7 @@ export const SportsHistoryPage: React.FC = () => {
                                         Fecha de Fin
                                       </FormLabel>
                                       <FormControl>
-                                        <Input type="date" {...field} className="focus-visible:ring-[#006837]" />
+                                        <Input type="date" {...field} value={field.value || ''} className="focus-visible:ring-[#006837]" />
                                       </FormControl>
                                       {(errorMsg || form.formState.errors?.sportsHistory?.[sportIndex]?.endDate) && (
                                         <div className="text-red-500 text-xs mt-1">
@@ -1550,6 +1494,14 @@ export const SportsHistoryPage: React.FC = () => {
                                         const category = categories.find(cat => cat.id === achievement.competition_category_id);
                                         const type = competitionTypes.find(type => type.id === achievement.competition_hierarchy_id);
 
+                                        console.log('>>> evaluando logro', {
+                                          isFile: achievement.attached_document instanceof File,
+                                          fileType: typeof achievement.attached_document,
+                                          hasId: !!achievement.id,
+                                          cat: achievement.competition_category_id,
+                                          type: achievement.competition_hierarchy_id,
+                                        });
+
                                         return (
                                           <motion.tr 
                                             key={keyId}
@@ -1560,7 +1512,7 @@ export const SportsHistoryPage: React.FC = () => {
                                           >
                                             <td className="px-6 py-4">
                                               <span className="font-medium text-gray-900">
-                                                {achievement.competitionName || achievement.description || 'Sin nombre'}
+                                                {achievement.competitionName || 'Sin nombre'}
                                               </span>
                                             </td>
                                             <td className="px-6 py-4">
@@ -1795,6 +1747,7 @@ export const SportsHistoryPage: React.FC = () => {
                         <div className="space-y-4">
                           <Input
                             type="file"
+                            disabled={false}
                             onChange={(e) => field.onChange(e.target.files?.[0])}
                             accept=".pdf,.jpg,.jpeg,.png"
                             className="hidden"

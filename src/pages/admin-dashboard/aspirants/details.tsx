@@ -16,7 +16,12 @@ import {
   ArrowUp,
   Percent,
   Clock,
-  TestTube
+  TestTube,
+  FileText,
+  ClipboardCheck,
+  Stethoscope,
+  Medal,
+  Trophy,
 } from 'lucide-react';
 import { mockAspirants } from '../data';
 import { aspirantsService } from '@/services/aspirants.service';
@@ -25,7 +30,10 @@ import { AspirantStatus } from '../components/common/AspirantStatus';
 import { Aspirant } from '@/types';
 import { morphologicalService, MorphologicalVariable, MorphologicalVariablesWeight, VariableResultPayload } from '@/services/morphological.service';
 import { athletesService } from '@/services/athletes.service';
+import { postulationService } from '@/services/postulation.service';
+import { attachedDocumentsService } from '@/services/attached-documents.service';
 import { api } from '@/lib/axios';
+import { sportsService } from '@/services/sports.service';
 
 interface PhysicalMeasurements {
   height: number;
@@ -71,6 +79,7 @@ export const AspirantDetailsPage = () => {
   // IDs de las variables Altura y Peso para referencia directa
   const [heightVarId, setHeightVarId] = useState<string | null>(null);
   const [weightVarId, setWeightVarId] = useState<string | null>(null);
+  const [imcVarId, setImcVarId] = useState<string | null>(null);
 
   // Después de los estados de heightVarId y weightVarId
   const [heightInput, setHeightInput] = useState('');
@@ -88,6 +97,55 @@ export const AspirantDetailsPage = () => {
       setWeightInput(wRes.value);
     }
   }, [measurementResults, heightVarId, weightVarId]);
+
+  const [attachedDocs, setAttachedDocs] = useState<{
+    medicalCertificate?: { id: string; path: string; };
+    consentForm?: { id: string; path: string; };
+  }>({});
+  const [isUpdatingDoc, setIsUpdatingDoc] = useState<string | null>(null);
+  const [sportsHistoryLoaded, setSportsHistoryLoaded] = useState(false);
+  const [docsLoaded, setDocsLoaded] = useState(false);
+  const [resultsLoaded, setResultsLoaded] = useState(false);
+  // Postulación activa cargada para el atleta
+  const [activePostulation, setActivePostulation] = useState<any | null>(null);
+
+  // Estado para saber si ya existen medidas y evitar parpadeos en botón
+  const [hasMeasures, setHasMeasures] = useState<boolean | null>(null);
+
+  // Historial deportivo cargado de la postulación
+  interface SportHistoryItem {
+    sport: string;
+    years: number;
+    level: string;
+    competition: string;
+    certificate?: string;
+    approved?: boolean;
+    id?: string;
+    status?: string;
+  }
+
+  const [sportsHistory, setSportsHistory] = useState<SportHistoryItem[]>([]);
+
+  // Estado para actualizar logro individual
+  const [updatingAchievement, setUpdatingAchievement] = useState<string | null>(null);
+
+  // Puntajes calculados en backend
+  const [sportsScore, setSportsScore] = useState<number | null>(null);
+  const [morphoScore, setMorphoScore] = useState<number | null>(null);
+
+  // Reset flag when modal toggles
+  useEffect(() => {
+    if (!isModalOpen) {
+      setResultsLoaded(false);
+    }
+  }, [isModalOpen]);
+
+  // Refs para evitar múltiples peticiones por idéntica postulación
+  const historyLoadedRef = React.useRef<Set<string>>(new Set()); // postulationId
+  const docsLoadedRef = React.useRef<Set<string>>(new Set());
+
+  // Ref para no volver a buscar la postulación si ya se hizo una vez
+  const postulationFetchedRef = React.useRef(false);
 
   const abbreviateDocumentType = (docType: string): string => {
     if (!docType) return 'CC';
@@ -157,8 +215,12 @@ export const AspirantDetailsPage = () => {
           morphologicalService.getVariables(),
           morphologicalService.getVariablesWeights(),
         ]);
+        // Detectar variable IMC
+        const imcVar = vars.find(v => /imc/i.test(v.name));
+        setImcVarId(imcVar?.id || null);
+
         // Excluir variable IMC del listado editable, ya que se calcula automáticamente
-        const filteredVars = vars.filter(v => !v.name.toLowerCase().includes('imc'));
+        const filteredVars = vars.filter(v => v.id !== imcVar?.id);
         setVariables(filteredVars);
         setWeights(wts);
         
@@ -177,8 +239,13 @@ export const AspirantDetailsPage = () => {
           return found ? found.id : null;
         };
 
-        setHeightVarId(findIdByPattern(filteredVars, /(altura|estatura|talla|height|longitud)/));
-        setWeightVarId(findIdByPattern(filteredVars, /\bpeso\b/));
+        const heightId = findIdByPattern(filteredVars, /(altura|estatura|talla|height|longitud)/) ||
+                         filteredVars.find(v => v.unit?.toLowerCase() === 'cm')?.id || null;
+        const weightId = findIdByPattern(filteredVars, /\bpeso\b/) ||
+                         filteredVars.find(v => v.unit?.toLowerCase() === 'kg' && /peso/i.test(v.name))?.id || null;
+
+        setHeightVarId(heightId);
+        setWeightVarId(weightId);
       } catch (err) {
         console.error('Error cargando variables morfológicas:', err);
       }
@@ -270,42 +337,13 @@ export const AspirantDetailsPage = () => {
     setSubmitError(null);
 
     try {
-      /* 1) Obtener semestre activo */
-      const semesterResp = await api.get('/semesters/active');
-      const activeSemester = semesterResp.data?.data;
-
-      if (!activeSemester) {
-        setSubmitError('No hay semestre activo configurado.');
+      const post = activePostulation;
+      if (!post) {
+        setSubmitError('No se encontró postulación activa para el atleta');
         return;
       }
 
-      /* 2) Obtener postulaciones del atleta y buscar la vigente para el semestre activo */
-      const postulations = await athletesService.getPostulations(aspirant.id);
-      let activePostulation = postulations.find((p: any) => p.semester?.id === activeSemester.id);
-
-      /* 3) Si no existe, crear una nueva postulación */
-      if (!activePostulation) {
-        try {
-          const createResp = await api.post('/postulations', {
-            athlete_id: aspirant.id,
-            semester_id: activeSemester.id,
-            status: 'active',
-          });
-          activePostulation = createResp.data?.data;
-        } catch (creationErr) {
-          console.error('Error creando postulación:', creationErr);
-          setSubmitError('No se pudo crear una postulación para el atleta');
-          return;
-        }
-      }
-
-      if (!activePostulation) {
-        setSubmitError('No se pudo obtener postulación para el atleta');
-        return;
-      }
-
-      /* 4) Construir payload completo con todas las mediciones */
-      const allPayload: VariableResultPayload[] = measurementResults
+      const basePayload: VariableResultPayload[] = measurementResults
         .map(res => ({ id: res.variable.id, numeric: parseFloat(res.value) }))
         .filter(r => !Number.isNaN(r.numeric))
         .map(r => ({
@@ -313,42 +351,42 @@ export const AspirantDetailsPage = () => {
           result: r.numeric,
         }));
 
-      if (allPayload.length === 0) {
+      // Calcular IMC si corresponde
+      let finalPayload = basePayload;
+      if (imcVarId) {
+        const h = parseFloat(heightInput);
+        const w = parseFloat(weightInput);
+        if (!Number.isNaN(h) && !Number.isNaN(w) && h > 0) {
+          const bmi = Number(((w)/( (h/100)*(h/100))).toFixed(2));
+          finalPayload = [...basePayload, { morphological_variable_id: imcVarId, result: bmi }];
+        }
+      }
+
+      if (finalPayload.length === 0) {
         setSubmitError('Debe ingresar al menos una medida');
         return;
       }
 
-      /* 5) Obtener resultados existentes para no duplicar */
-      let existingVarIds: string[] = [];
+      // Verificar si ya existen resultados
+      let existing: any[] = [];
       try {
-        const postDetailsResp = await api.get(`/postulations/${activePostulation.id}`);
-        existingVarIds = (postDetailsResp.data?.data?.morphological_variable_results || []).map((r: any) => r.morphological_variable?.id);
-      } catch (err) {
-        console.warn('No se pudo obtener detalles de postulación para filtrar duplicados:', err);
-      }
-
-      const payload: VariableResultPayload[] = allPayload.filter(v => !existingVarIds.includes(v.morphological_variable_id));
-
-      if (payload.length === 0) {
-        console.log('Todas las variables ya existen, no hay nada nuevo que guardar');
-        setIsModalOpen(false);
-        return;
-      }
-
-      /* 6) Enviar resultados al backend de forma individual */
-      for (const variable of payload) {
-        try {
-          await morphologicalService.createVariableResult(activePostulation.id, variable);
-        } catch (err: any) {
-          // Si ya existe, ignoramos el error 400 (duplicado) y continuamos
-          if (err?.response?.status === 400) {
-            console.warn('Variable ya existía, se omite:', variable.morphological_variable_id);
-            continue;
-          }
-          throw err;
+        const rawExisting = await morphologicalService.getVariableResults(post.id);
+        existing = (rawExisting as any[]).filter(r => r.postulation?.id === post.id && r.postulation?.athlete?.id === aspirant.id);
+        console.log('[Details] Medidas existentes filtradas:', existing);
+        if (existing.length > 0) {
+          setSubmitError('Las medidas ya fueron registradas para esta postulación');
+          return;
+        }
+      } catch (err: any) {
+        // Si el backend responde 400 (p.ej. sin registros) continuamos, cualquier otro error se loguea
+        if (err?.response?.status !== 400) {
+          console.warn('[Details] Error consultando medidas existentes:', err);
         }
       }
-      setIsModalOpen(false);
+
+      await morphologicalService.createVariableResults(post.id, finalPayload);
+      setAspirant(prev => prev ? { ...prev, evaluated: true } : prev);
+    setIsModalOpen(false);
     } catch (err) {
       console.error('Error guardando resultados morfológicos:', err);
       setSubmitError('Error al guardar las medidas. Por favor intente nuevamente.');
@@ -366,6 +404,359 @@ export const AspirantDetailsPage = () => {
     if (unit === 'Kg/m^{2}') return 'kg/m²';
     return unit;
   };
+
+  const uploadsBase = `${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/uploads/`;
+
+  const fetchPostulationForAthlete = async (athleteId: string) => {
+    console.log('[Details] Intentando obtener postulación activa mediante athletesService');
+    let post: any = await athletesService.getActivePostulation(athleteId);
+    if (post) {
+      console.log('[Details] Postulación activa encontrada (athletesService):', post.id);
+      return post;
+    }
+    console.log('[Details] No se encontró postulación activa con athletesService, probando postulationService');
+    try {
+      const posts = await postulationService.getPostulationsByAthlete(athleteId);
+      console.log('[Details] Lista de postulaciones obtenida:', posts);
+      // Mantener solo postulaciones del atleta (por si la API trae demás)
+      const ownPosts = posts.filter(p => p.athlete?.id === athleteId);
+
+      // Filtrar por estados vigentes (active o pending)
+      const preferred = ['active','pending'];
+      post = ownPosts.find(p => preferred.includes(p.status));
+      if (!post && posts.length) {
+        // ordenar por fecha entre sus propias postulaciones
+        const sorted = [...ownPosts].sort((a:any,b:any) => {
+          const da = new Date(a.updated_at || a.created_at || 0).getTime();
+          const db = new Date(b.updated_at || b.created_at || 0).getTime();
+          return db - da; // más reciente primero
+        });
+        post = sorted[0];
+      }
+      if (post) {
+        console.log('[Details] Postulación seleccionada:', post.id, 'status:', post.status);
+      } else {
+        console.warn('[Details] El atleta no tiene postulaciones registradas.');
+      }
+      return post;
+    } catch (err) {
+      console.error('[Details] Error al obtener postulaciones con postulationService:', err);
+      return null;
+    }
+  };
+
+  // Cargar historial deportivo con certificados de la postulación
+  useEffect(() => {
+    const loadSportsHistory = async () => {
+      if (!activePostulation) return;
+      if (historyLoadedRef.current.has(activePostulation.id)) return;
+
+      try {
+        console.log('[Details] Cargando historial deportivo para aspirante:', aspirant?.id);
+        // Usar la postulación ya obtenida
+        const post = activePostulation;
+        console.log('[Details] Postulación activa:', post);
+        if (!post) return;
+
+        console.log('[Details] Obteniendo detalles de postulación:', post.id);
+        const postulation = await postulationService.getPostulationById(post.id);
+        console.log('[Details][DEBUG] Postulación recibida:', postulation);
+        console.log('[Details] Deportes en postulación:', postulation.postulation_sports);
+
+        // Actualizar la postulación activa para que contenga los documentos adjuntos completos
+        setActivePostulation(postulation);
+
+        // Obtener documentos adjuntos relacionados a logros para enlazar certificados
+        let docsByAchievement: Record<string, string> = {};
+        try {
+          const allDocs = await attachedDocumentsService.getDocuments();
+          console.log('[Details][DEBUG] Documentos recuperados total (attached-documents):', allDocs.length, allDocs);
+          docsByAchievement = allDocs
+            .filter((d: any) => /(achievement)/i.test(d.reference_type))
+            .reduce((acc: any, d: any) => {
+              acc[d.reference_id] = d.file_path || d.file_name || '';
+              return acc;
+            }, {});
+          console.log('[Details] Mapeo docsByAchievement:', docsByAchievement);
+        } catch (err) {
+          console.warn('[Details] No se pudieron cargar documentos adjuntos para logros:', err);
+        }
+
+        // Formatear historial deportivo a partir de postulation_sports y sus logros
+        const formattedHistory: SportHistoryItem[] = [];
+        const seenAch = new Set<string>();
+        const sportMap: Record<string, number> = {}; // to accumulate years max
+        (postulation.postulation_sports || []).forEach((ps: any) => {
+          if (!ps.postulation_sport_achievements || ps.postulation_sport_achievements.length === 0) return;
+          const sportName = ps.sport?.name || '';
+          const yearsExp = ps.experience_years ?? 0;
+          console.log('[Details] Procesando deporte:', sportName, 'con', ps.postulation_sport_achievements?.length || 0, 'logros');
+
+          (ps.postulation_sport_achievements || []).forEach((psa: any) => {
+            const ach = psa.sports_achievement || {};
+            const categoryName = ach.sports_competition_category?.name || 'Sin categoría';
+            const typeName = ach.competition_hierarchy?.name || 'Sin tipo';
+            const yearsNum = parseFloat(yearsExp as any) || 0;
+
+            let certUrl: string | undefined =
+              // Soporte tanto snake_case como camelCase provenientes del backend
+              psa.certificate_url ??
+              psa.certificateUrl ??
+              docsByAchievement[psa.id] ??
+              docsByAchievement[ps.id] ??
+              docsByAchievement[ach.id];
+            if (certUrl && !/^https?:\/\//.test(certUrl)) {
+              certUrl = `${uploadsBase}${certUrl}`;
+            }
+            console.log('[Details] Certificado mapeado:', certUrl);
+
+            if (seenAch.has(ach.id)) return;
+            seenAch.add(ach.id);
+
+            // Deduplicar por deporte: si ya existe, conservar la mayor experiencia (years) y primer certificado
+            const existing = formattedHistory.find(h => h.sport === sportName);
+            if (existing) {
+              existing.years = Math.max(existing.years, yearsNum);
+              // Mantener aprobado=true si alguno lo está
+              existing.approved = existing.approved || (psa.status === 'Completado');
+              if (!existing.certificate) existing.certificate = certUrl;
+              if (!existing.id) existing.id = psa.id;
+              if (!existing.status) existing.status = psa.status;
+            } else {
+              formattedHistory.push({
+                id: psa.id,
+                sport: sportName,
+                years: yearsNum,
+                level: categoryName as any,
+                competition: typeName,
+                certificate: certUrl,
+                status: psa.status,
+                approved: psa.status === 'Completado' ? true : psa.status === 'Cancelado' ? false : undefined
+              });
+            }
+          });
+        });
+
+        if (formattedHistory.length > 0) {
+          setSportsHistory(formattedHistory);
+        }
+        historyLoadedRef.current.add(activePostulation.id);
+        setSportsHistoryLoaded(true);
+      } catch (err) {
+        console.error('[Details] Error cargando historial deportivo:', err);
+      }
+    };
+
+    loadSportsHistory();
+  }, [activePostulation]);
+
+  // Cargar documentos adjuntos
+  useEffect(() => {
+    const loadAttachedDocuments = async () => {
+      if (!aspirant || !activePostulation) return;
+      if (docsLoadedRef.current.has(activePostulation.id)) return;
+
+      try {
+        console.log('[Details] Cargando documentos adjuntos para aspirante:', aspirant.id);
+        // Obtener la postulación activa
+        const post = activePostulation;
+        console.log('[Details] Postulación activa para documentos:', post);
+        if (!post) return;
+
+        // Si la postulación ya contiene los documentos, usarlos directamente. Evita llamada extra al servicio.
+        let postulationDocs: any[] = post.attached_documents && post.attached_documents.length
+          ? post.attached_documents
+          : [];
+
+        if (postulationDocs.length === 0) {
+          // Fallback: obtener todos los documentos adjuntos y filtrar
+          const allDocs = await attachedDocumentsService.getDocuments();
+          console.log('[Details][DEBUG] Total docs recuperados (attached-documents):', allDocs.length);
+
+          postulationDocs = allDocs.filter(doc => 
+            (doc.postulation?.id === post.id) ||
+            doc.postulation_id === post.id ||
+            (doc.reference_id === post.id && doc.reference_type === 'postulation')
+          );
+        }
+
+        // Identificar documentos específicos por tipo
+        const normalize = (s: string | undefined) => {
+          const base = (s ?? '').toLowerCase();
+          // Eliminar acentos para comparaciones robustas
+          return base.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        };
+        const medicalCert = postulationDocs.find(doc => {
+          const typeName = normalize(doc.attachedDocumentType?.name);
+          return typeName.includes('medic'); // coincide con "medico" o "médico"
+        });
+
+        const consentForm = postulationDocs.find(doc => {
+          const typeName = normalize(doc.attachedDocumentType?.name);
+          return typeName.includes('consent'); // "Consentimiento Informado"
+        });
+
+        setAttachedDocs({
+          medicalCertificate: medicalCert ? { id: medicalCert.id, path: (medicalCert.path || medicalCert.file_path) } : undefined,
+          consentForm: consentForm ? { id: consentForm.id, path: (consentForm.path || consentForm.file_path) } : undefined,
+        });
+        docsLoadedRef.current.add(activePostulation.id);
+        setDocsLoaded(true);
+      } catch (err) {
+        console.error('[Details] Error cargando documentos adjuntos:', err);
+      }
+    };
+
+    loadAttachedDocuments();
+  }, [aspirant, activePostulation]);
+
+  // Hook para precargar los resultados de variables (medidas) cuando el modal se abre
+  useEffect(() => {
+    const loadVariableResults = async () => {
+      if (!isModalOpen || resultsLoaded || !aspirant) return;
+
+      try {
+        console.log('[Details] Intentando cargar mediciones previas...');
+        const post = activePostulation;
+        if (!post) {
+          console.warn('[Details] Sin postulación activa, no se cargan medidas.');
+          return;
+        }
+
+        const prevAll = await morphologicalService.getVariableResults(post.id);
+        const meaningful = (prevAll as any[] || []).filter(r => (r.postulation?.id === post.id) && r.result !== null && r.result !== undefined);
+        console.log('[Details] Resultados previos de variables filtrados:', meaningful);
+
+        if (meaningful.length > 0) {
+          // Mapear resultados ...
+          setMeasurementResults(current => current.map(r => {
+            const found = meaningful.find(p => (p.morphological_variable_id ?? p.morphological_variable?.id) === r.variable.id);
+            return found ? { ...r, value: String(found.result), isValid: true } : r;
+          }));
+
+          // Sincronizar inputs de altura y peso
+          const hRes = meaningful.find(p => (p.morphological_variable_id ?? p.morphological_variable?.id) === heightVarId);
+          const wRes = meaningful.find(p => (p.morphological_variable_id ?? p.morphological_variable?.id) === weightVarId);
+          if (hRes) setHeightInput(String(hRes.result));
+          if (wRes) setWeightInput(String(wRes.result));
+
+          // Marcar como evaluado si aún no lo estaba
+          setAspirant(prevAsp => prevAsp ? { ...prevAsp, evaluated: true } : prevAsp);
+        }
+
+        setResultsLoaded(true);
+      } catch (err) {
+        console.error('[Details] Error al cargar mediciones previas:', err);
+      }
+    };
+
+    loadVariableResults();
+  }, [isModalOpen, resultsLoaded, aspirant, activePostulation]);
+
+  const handleDocumentAction = async (docId: string, action: 'approve' | 'reject') => {
+    if (!docId) return;
+    
+    setIsUpdatingDoc(docId);
+    try {
+      await attachedDocumentsService.updateDocument(docId, {
+        status: action === 'approve' ? 'Completado' : 'Cancelado'
+      });
+      
+      // Recargar documentos para reflejar el cambio
+      if (!aspirant?.id) return;
+      const post = activePostulation;
+      if (post) {
+        const allDocs = await attachedDocumentsService.getDocuments();
+        const postulationDocs = allDocs.filter(doc => 
+          (doc.postulation?.id === post.id) ||
+          doc.postulation_id === post.id ||
+          (doc.reference_id === post.id && doc.reference_type === 'postulation')
+        );
+
+        const medicalCert = postulationDocs.find(doc => (doc.document_type_id === '2') || (doc.attachedDocumentType?.id === '2'));
+        const consentForm = postulationDocs.find(doc => (doc.document_type_id === '3') || (doc.attachedDocumentType?.id === '3'));
+
+        setAttachedDocs({
+          medicalCertificate: medicalCert ? { id: medicalCert.id, path: (medicalCert.path || medicalCert.file_path) } : undefined,
+          consentForm: consentForm ? { id: consentForm.id, path: (consentForm.path || consentForm.file_path) } : undefined,
+        });
+      }
+    } catch (err) {
+      console.error('Error actualizando documento:', err);
+    } finally {
+      setIsUpdatingDoc(null);
+    }
+  };
+
+  /* =================   ACTUALIZAR ESTADO DE LOGROS   ================= */
+  const handleAchievementAction = async (achievementId: string, action: 'complete' | 'cancel') => {
+    if (!achievementId) return;
+    const newStatus = action === 'complete' ? 'Completado' : 'Cancelado';
+    setUpdatingAchievement(achievementId);
+    try {
+      await api.patch(`/postulation-sport-achievements/${achievementId}`, { status: newStatus });
+      // Refrescar el estado local
+      setSportsHistory(prev => prev.map(h =>
+        h.id === achievementId ? { ...h, status: newStatus, approved: newStatus === 'Completado' } : h
+      ));
+    } catch (err) {
+      console.error('Error actualizando estado del logro:', err);
+    } finally {
+      setUpdatingAchievement(null);
+    }
+  };
+
+  // Effect to fetch postulation once aspirant is loaded
+  useEffect(() => {
+    const obtainPostulation = async () => {
+      if (!aspirant || postulationFetchedRef.current) return; // ya intentado
+      const post = await fetchPostulationForAthlete(aspirant.id);
+      setActivePostulation(post);
+      setHasMeasures(null); // reiniciar mientras se verifica
+      postulationFetchedRef.current = true;
+    };
+
+    obtainPostulation();
+  }, [aspirant, activePostulation]);
+
+  // Detectar si la postulación ya tiene medidas cargadas para mostrar el botón correcto
+  useEffect(() => {
+    const checkExistingMeasurements = async () => {
+      if (!aspirant || !activePostulation) return;
+
+      try {
+        const results = await morphologicalService.getVariableResults(activePostulation.id);
+        const meaningful = (results as any[]).filter(r => r.postulation?.id === activePostulation.id && r.result !== null && r.result !== undefined);
+        const has = meaningful.length > 0;
+        setHasMeasures(has);
+        if (has) {
+          setAspirant(prev => prev ? { ...prev, evaluated: true } : prev);
+        }
+      } catch (err) {
+        console.warn('[Details] No se pudieron verificar medidas existentes:', err);
+      }
+    };
+
+    checkExistingMeasurements();
+  }, [aspirant, activePostulation]);
+
+  // Cargar puntajes cuando tengamos postulación activa
+  useEffect(() => {
+    const loadScores = async () => {
+      if (!activePostulation?.id) return;
+      try {
+        const [sport, morpho] = await Promise.all([
+          sportsService.getPostulationSportScore(activePostulation.id),
+          morphologicalService.getPostulationScore(activePostulation.id),
+        ]);
+        setSportsScore(sport);
+        setMorphoScore(morpho);
+      } catch (err) {
+        console.error('[Details] Error cargando puntajes:', err);
+      }
+    };
+    loadScores();
+  }, [activePostulation?.id]);
 
   if (!aspirant) {
     return (
@@ -717,7 +1108,12 @@ export const AspirantDetailsPage = () => {
             className="bg-[#006837] text-white px-4 py-2 rounded-xl hover:bg-[#005828] transition-colors flex items-center gap-2"
           >
             <Ruler size={20} />
-            {aspirant.evaluated ? 'Editar Medidas' : 'Registrar Medidas'}
+            {hasMeasures === null ? (
+              <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+              </svg>
+            ) : hasMeasures ? 'Editar Medidas' : 'Registrar Medidas'}
           </button>
         </div>
 
@@ -779,6 +1175,10 @@ export const AspirantDetailsPage = () => {
 
           <section className="mt-8">
             <h3 className="text-lg font-semibold mb-4">Historial Deportivo</h3>
+            <div className="flex items-center gap-2 mb-4">
+              <Trophy className="text-[#006837]" size={24} />
+              <p className="text-gray-600">Logros y certificaciones deportivas del aspirante</p>
+            </div>
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead className="bg-gray-50">
@@ -789,36 +1189,72 @@ export const AspirantDetailsPage = () => {
                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500">Competencia</th>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500">Certificado</th>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500">Estado</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500">Acciones</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {aspirant.sportsHistory.map((history, index): React.ReactNode => (
+                  {(sportsHistory.length ? sportsHistory : aspirant.sportsHistory).map((history, index): React.ReactNode => (
                     <tr key={index}>
-                      <td className="px-6 py-4 whitespace-nowrap">{history.sport}</td>
-                      <td className="px-6 py-4 whitespace-nowrap">{history.years}</td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center gap-2">
+                          <Medal className="text-[#006837]" size={16} />
+                          {history.sport}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        {Number(history.years) % 1 === 0 ? Number(history.years) : Number(history.years).toFixed(1)}
+                      </td>
                       <td className="px-6 py-4 whitespace-nowrap">{history.level}</td>
                       <td className="px-6 py-4 whitespace-nowrap">{history.competition}</td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        {history.certificate && (
-                          <button className="text-[#006837] hover:text-[#A8D08D] font-medium flex items-center gap-1">
+                        {history.certificate ? (
+                          <a
+                            href={history.certificate}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-[#006837] hover:text-[#A8D08D] font-medium flex items-center gap-1"
+                          >
                             <Download size={16} />
-                            Descargar
-                          </button>
+                            Ver PDF
+                          </a>
+                        ) : (
+                          <span className="text-gray-400 text-sm">No adjunto</span>
                         )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
+                        <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                          (history as any).status === 'Completado'
+                            ? 'bg-green-100 text-green-800'
+                            : (history as any).status === 'Cancelado'
+                              ? 'bg-red-100 text-red-800'
+                              : 'bg-yellow-100 text-yellow-800'
+                        }`}>
+                          {(history as any).status || 'Pendiente'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex gap-2">
-                          <button 
-                            className="text-green-600 hover:text-green-800"
-                            onClick={() => console.log('Aprobar certificado', index)}
+                          <button
+                            className={`text-green-600 hover:text-green-800 ${((history as any).status === 'Completado') ? 'opacity-40 cursor-not-allowed' : ''}`}
+                            disabled={updatingAchievement === ((history as any).id ?? '') || ((history as any).status === 'Completado')}
+                            onClick={() => handleAchievementAction((history as any).id ?? '', 'complete')}
                           >
-                            <CheckCircle size={20} />
+                            {updatingAchievement === ((history as any).id ?? '') ? (
+                              <div className="animate-spin h-5 w-5 border-2 border-green-600 rounded-full border-t-transparent" />
+                            ) : (
+                              <CheckCircle size={20} />
+                            )}
                           </button>
-                          <button 
-                            className="text-red-600 hover:text-red-800"
-                            onClick={() => console.log('Desaprobar certificado', index)}
+                          <button
+                            className={`text-red-600 hover:text-red-800 ${((history as any).status === 'Cancelado') ? 'opacity-40 cursor-not-allowed' : ''}`}
+                            disabled={updatingAchievement === ((history as any).id ?? '') || ((history as any).status === 'Cancelado')}
+                            onClick={() => handleAchievementAction((history as any).id ?? '', 'cancel')}
                           >
-                            <XCircle size={20} />
+                            {updatingAchievement === ((history as any).id ?? '') ? (
+                              <div className="animate-spin h-5 w-5 border-2 border-red-600 rounded-full border-t-transparent" />
+                            ) : (
+                              <XCircle size={20} />
+                            )}
                           </button>
                         </div>
                       </td>
@@ -828,6 +1264,78 @@ export const AspirantDetailsPage = () => {
               </table>
             </div>
           </section>
+
+          <section className="mt-8">
+            <h3 className="text-lg font-semibold mb-4">Documentos Adjuntos</h3>
+            <div className="grid md:grid-cols-2 gap-6">
+              {/* Certificado Médico */}
+              <div className="bg-white rounded-lg border p-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Stethoscope className="text-[#006837]" size={20} />
+                    <h4 className="font-medium">Certificado Médico</h4>
+                </div>
+                  {attachedDocs.medicalCertificate ? (
+                    <a 
+                      href={attachedDocs.medicalCertificate.path}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[#006837] hover:text-[#A8D08D] font-medium flex items-center gap-1"
+                    >
+                      <FileText size={16} />
+                      Ver Documento
+                    </a>
+                  ) : (
+                    <span className="text-yellow-600 text-sm">No cargado</span>
+                  )}
+                </div>
+              </div>
+
+              {/* Consentimiento Informado */}
+              <div className="bg-white rounded-lg border p-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <ClipboardCheck className="text-[#006837]" size={20} />
+                    <h4 className="font-medium">Consentimiento Informado</h4>
+                </div>
+                  {attachedDocs.consentForm ? (
+                    <a 
+                      href={attachedDocs.consentForm.path}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[#006837] hover:text-[#A8D08D] font-medium flex items-center gap-1"
+                    >
+                      <FileText size={16} />
+                      Ver Documento
+                    </a>
+                  ) : (
+                    <span className="text-yellow-600 text-sm">No cargado</span>
+                  )}
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* Sección de puntajes */}
+          {sportsScore !== null && morphoScore !== null && (
+            <div className="mb-10">
+              <h3 className="text-lg font-semibold mb-4">Puntajes Obtenidos</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+                <div className="bg-gray-50 p-4 rounded-xl shadow flex flex-col items-center">
+                  <p className="text-sm text-gray-500 mb-1">Logros Deportivos (40%)</p>
+                  <p className="text-3xl font-bold text-[#006837]">{sportsScore}</p>
+                </div>
+                <div className="bg-gray-50 p-4 rounded-xl shadow flex flex-col items-center">
+                  <p className="text-sm text-gray-500 mb-1">Valoración Morfofuncional (60%)</p>
+                  <p className="text-3xl font-bold text-[#006837]">{morphoScore}</p>
+                </div>
+                <div className="bg-gray-50 p-4 rounded-xl shadow flex flex-col items-center">
+                  <p className="text-sm text-gray-500 mb-1">Calificación Total</p>
+                  <p className="text-3xl font-bold text-[#006837]">{Number(sportsScore)+Number(morphoScore)}</p>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
