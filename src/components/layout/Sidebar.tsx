@@ -13,9 +13,7 @@ import { currentUser } from '../../data';
 
 const navItems = [
   { icon: Home, label: 'Inicio', path: '/' },
-  { icon: LayoutDashboard, label: 'Panel de Control', path: '/dashboard' },
   { icon: Users, label: 'Aspirantes', path: '/aspirants' },
-  { icon: Medal, label: 'Historial Deportivo', path: '/sports-history' },
   { icon: FileText, label: 'Reportes', path: '/reports' },
   { icon: Settings, label: 'Configuración', path: '/settings' },
 ];

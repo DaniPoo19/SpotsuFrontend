@@ -101,22 +101,10 @@ export const ReportsPage = () => {
 
   const toggleSortOrder = () => setSortOrder(p=> p==='asc'?'desc':'asc');
 
-  const handleExportPDF = () => {
-    window.open(`/postulations/report/${semesterId}?format=pdf`, '_blank');
-  };
 
   return (
     <div className="p-8">
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl font-bold">Reporte de Evaluaciones</h2>
-        <button
-          onClick={handleExportPDF}
-          className="flex items-center gap-2 px-4 py-2 bg-[#006837] text-white rounded-xl hover:bg-[#005828] transition-colors"
-        >
-          <Download size={20} />
-          Exportar PDF
-        </button>
-      </div>
+
 
       <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
         <div className="p-6 border-b border-gray-200">

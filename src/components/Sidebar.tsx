@@ -11,7 +11,6 @@ import { currentUser } from '../data';
 
 const navItems = [
   { icon: Home, label: 'Inicio', href: '#' },
-  { icon: LayoutDashboard, label: 'Panel de Control', href: '#panel' },
   { icon: Users, label: 'Aspirantes', href: '#aspirantes' },
   { icon: GraduationCap, label: 'Calificaciones', href: '#' },
   { icon: Settings, label: 'Configuración', href: '#' },

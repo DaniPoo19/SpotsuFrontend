@@ -72,10 +72,13 @@ export const ReportsPage = () => {
 
   const toggleSortOrder = () => setSortOrder(p=> p==='asc'?'desc':'asc');
 
+  const handleExportPDF = () => {
+    if (semesterId==='all') return; // solo semestre individual
+    window.open(`/postulations/report/${semesterId}?format=pdf`, '_blank');
+  };
 
   return (
-    <div className="p-8">
-
+   
 
       <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
         <div className="p-6 border-b border-gray-200">

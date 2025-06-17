@@ -24,15 +24,7 @@ export const HomePage = () => {
               de aspirantes deportistas.
             </p>
             <div className="grid md:grid-cols-2 gap-6">
-              <button
-                onClick={() => navigate('/dashboard')}
-                className="bg-[#006837] text-white p-6 rounded-xl hover:bg-[#005828] transition-colors"
-              >
-                <h3 className="text-xl font-bold mb-2 flex items-center gap-2">
-                  Panel de Control <ArrowRight size={20} />
-                </h3>
-                <p>Accede a las estadísticas y métricas principales del sistema.</p>
-              </button>
+
               <button
                 onClick={() => navigate('/dashboard/aspirants')}
                 className="bg-[#A8D08D] text-[#006837] p-6 rounded-xl hover:bg-[#97c077] transition-colors"
