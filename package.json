@@ -10,7 +10,8 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "predeploy": "npm run build",
-    "deploy": "gh-pages -d build"
+    "deploy": "gh-pages -d build",
+    "prod": "pm2 start serve --name spotsu-frontend -- -s build -l 5174"
     
   },
   "dependencies": {
