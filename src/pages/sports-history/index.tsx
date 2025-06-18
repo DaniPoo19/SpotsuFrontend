@@ -572,7 +572,7 @@ export const SportsHistoryPage: React.FC = () => {
           const docsToUpload: Array<{file: File | undefined | null; code: string}> = [
              { file: (data.documents as any).consentForm, code: 'CONSENT_FORM' },
              { file: (data.documents as any).MedicCertificate, code: 'MEDICAL_CERTIFICATE' }
-           ];
+          ];
 
           const getTypeId = (code: string): string | undefined => {
             const label = codeToLabel[code];
