@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { useAuth } from '@/hooks/useAuth';
 
-const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+const baseURL = import.meta.env.VITE_API_URL || 'https://backend.spotsu.site/api';
 
 export const api = axios.create({
   baseURL,

@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 export const api = axios.create({
-  baseURL: 'http://localhost:3000/spotsu/api/v1',
+  baseURL: 'https://backend.spotsu.site/api',
 });
 
 // Interceptor para agregar el token de autenticación

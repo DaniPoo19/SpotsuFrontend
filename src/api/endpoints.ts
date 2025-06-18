@@ -65,7 +65,7 @@ const API_ENDPOINTS = {
   },
   PARQ: {
     QUESTIONS: '/par-q',
-    RESPONSES: '/par-qresponses',
+    RESPONSES: '/par-q-responses',
   },
   // Postulations
   POSTULATIONS: {

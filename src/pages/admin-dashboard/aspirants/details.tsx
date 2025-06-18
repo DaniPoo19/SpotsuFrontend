@@ -405,7 +405,7 @@ export const AspirantDetailsPage = () => {
     return unit;
   };
 
-  const uploadsBase = `${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/uploads/`;
+  const uploadsBase = `${import.meta.env.VITE_API_URL || 'https://backend.spotsu.site/api'}/uploads/`;
 
   const fetchPostulationForAthlete = async (athleteId: string) => {
     console.log('[Details] Intentando obtener postulación activa mediante athletesService');

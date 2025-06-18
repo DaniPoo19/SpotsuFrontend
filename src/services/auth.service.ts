@@ -5,7 +5,7 @@ import { LoginDTO, LoginResponseDTO, RegisterDTO, UserDTO, PersonDTO, UserRole }
 
 // Configuración de axios
 const api = axios.create({
-  baseURL: `${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/spotsu/api/v1`,
+  baseURL: `${import.meta.env.VITE_API_URL || 'https://backend.spotsu.site/api'}`,
   headers: {
     'Content-Type': 'application/json',
   },

@@ -3,10 +3,10 @@ import { toast } from 'react-hot-toast';
 
 // Configuración de la API
 const API_CONFIG = {
-  // URL base sin el prefijo /spotsu/api/v1
-  BASE_URL: import.meta.env.VITE_API_URL || 'http://localhost:3000',
-  // Prefijo de la API
-  API_PREFIX: '/spotsu/api/v1'
+  // Nueva URL base del backend desplegado
+  BASE_URL: import.meta.env.VITE_API_URL || 'https://backend.spotsu.site/api',
+  // Ya no necesitamos prefijo porque la base incluye /api
+  API_PREFIX: ''
 } as const;
 
 // Crear instancia de axios con configuración base
@@ -20,8 +20,8 @@ const axiosInstance = axios.create({
 // Interceptor para logs de peticiones
 axiosInstance.interceptors.request.use(
   (config) => {
-    // Asegurarse de que la URL comience con el prefijo de la API
-    if (!config.url?.startsWith(API_CONFIG.API_PREFIX)) {
+    // Añadir el prefijo solo si está definido y aún no está en la URL
+    if (API_CONFIG.API_PREFIX && !config.url?.startsWith(API_CONFIG.API_PREFIX)) {
       config.url = `${API_CONFIG.API_PREFIX}${config.url}`;
     }
 

@@ -36,7 +36,7 @@ export class ParQService {
       // Enviar respuestas y actualizar estado inmediatamente si encontramos una positiva
       for (const response of formattedResponses) {
         console.log('[PAR-Q Submit] Enviando respuesta individual:', response);
-        const result = await api.post('/par-qresponses', response);
+        const result = await api.post('/par-q-responses', response);
         console.log('[PAR-Q Submit] Respuesta guardada:', result.data);
 
         // Si es una respuesta positiva, actualizar el estado inmediatamente
