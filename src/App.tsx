@@ -17,6 +17,8 @@ import '@fontsource/roboto/400.css';
 import '@fontsource/roboto/500.css';
 import '@fontsource/roboto/700.css';
 import { SportsHistoryPage } from '@/pages/sports-history';
+import { SportsHistoryManagementPage } from '@/pages/user-dashboard/sports-history-management';
+import { AddSportsAchievementsPage } from '@/pages/user-dashboard/add-sports-achievements';
 import { Layout as AdminDashboardLayout } from '@/pages/admin-dashboard/components/layout';
 import { HomePage } from '@/pages/admin-dashboard/home';
 import { AspirantsPage } from '@/pages/admin-dashboard/aspirants';
@@ -45,6 +47,8 @@ function App() {
             <Route path="home" element={<UserDashboardHome />} />
             <Route path="profile" element={<UserProfilePage />} />
             <Route path="documents" element={<DocumentsPage />} />
+            <Route path="sports-history-management" element={<SportsHistoryManagementPage />} />
+            <Route path="add-sports-achievements" element={<AddSportsAchievementsPage />} />
             <Route path="postulations" element={<PostulationsPage />} />
             <Route path="postulations/:id" element={<PostulationDetailsPage />} />
           </Route>

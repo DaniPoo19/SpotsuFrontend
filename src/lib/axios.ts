@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 export const api = axios.create({
-  baseURL: 'https://backend.spotsu.site/api',
+  baseURL: import.meta.env.VITE_API_URL || '/api',
 });
 
 // Interceptor para agregar el token de autenticación

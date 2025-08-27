@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { Search, ArrowUpDown, Download } from 'lucide-react';
+import { Search, ArrowUpDown, Download, FileDown } from 'lucide-react';
 import { api } from '@/lib/axios';
+import { reportsService } from '@/services/reports.service';
+import toast from 'react-hot-toast';
 
 type SortOrder = 'asc' | 'desc';
 
@@ -17,6 +19,7 @@ export const ReportsPage = () => {
   const [search, setSearch] = useState('');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
   const [isLoading, setIsLoading] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
 
   // Fetch list of semesters (simple)
   const [semesters, setSemesters] = useState<{id:string,name:string}[]>([]);
@@ -52,7 +55,19 @@ export const ReportsPage = () => {
               try {
                 const r = await api.get(`/postulations/report/${id}`);
                 console.log(`[Reports] Datos crudos del semestre ${id}:`, r.data);
-                const data = r.data.data || r.data;
+                
+                const reportData = r.data.data || r.data;
+                let data: ReportRow[] = [];
+                
+                if (Array.isArray(reportData)) {
+                  data = reportData;
+                } else if (reportData && Array.isArray(reportData.data)) {
+                  data = reportData.data;
+                } else {
+                  console.warn(`[Reports] Formato de datos inesperado para semestre ${id}:`, reportData);
+                  data = [];
+                }
+                
                 console.log(`[Reports] Datos procesados del semestre ${id}:`, data);
                 return data;
               } catch (err) {
@@ -73,7 +88,22 @@ export const ReportsPage = () => {
         } else {
           const resp = await api.get(`/postulations/report/${semesterId}`);
           console.log(`[Reports] Respuesta completa del servidor para semestre ${semesterId}:`, resp.data);
-          const incoming = resp.data.data || resp.data;
+          
+          // El backend devuelve: { status: 'success', message: '...', data: { data: [...], pdfDefinition: {...} } }
+          const reportData = resp.data.data || resp.data;
+          let incoming: ReportRow[] = [];
+          
+          if (Array.isArray(reportData)) {
+            // Si data es directamente un array
+            incoming = reportData;
+          } else if (reportData && Array.isArray(reportData.data)) {
+            // Si data contiene un objeto con propiedad data que es array
+            incoming = reportData.data;
+          } else {
+            console.warn('[Reports] Formato de datos inesperado:', reportData);
+            incoming = [];
+          }
+          
           console.log(`[Reports] Datos procesados del semestre ${semesterId}:`, incoming.map((row: ReportRow) => ({
             nombre: row.athlete_name,
             sports_score: row.sports_score,
@@ -91,20 +121,67 @@ export const ReportsPage = () => {
     fetchReport();
   }, [semesterId, semesters]);
 
-  const filtered = rows
-    .filter(r => r.athlete_name.toLowerCase().includes(search.toLowerCase()))
-    .sort((a,b)=> sortOrder==='desc'? b.total_score - a.total_score : a.total_score - b.total_score);
+  const filtered = (rows || [])
+    .filter(r => r?.athlete_name?.toLowerCase()?.includes(search.toLowerCase()) ?? false)
+    .sort((a,b)=> sortOrder==='desc'? (b.total_score || 0) - (a.total_score || 0) : (a.total_score || 0) - (b.total_score || 0));
 
   // Puntajes máximos para escalar barras por separado
-  const maxSports = filtered.length ? Math.max(...filtered.map(r=>r.sports_score)) : 1;
-  const maxMorpho = filtered.length ? Math.max(...filtered.map(r=>r.morpho_score)) : 1;
+  const maxSports = filtered.length ? Math.max(...filtered.map(r => r?.sports_score || 0)) : 1;
+  const maxMorpho = filtered.length ? Math.max(...filtered.map(r => r?.morpho_score || 0)) : 1;
 
   const toggleSortOrder = () => setSortOrder(p=> p==='asc'?'desc':'asc');
+
+  const handleDownloadPDF = async () => {
+    if (!semesterId || semesterId === 'all') {
+      toast.error('Por favor selecciona un semestre específico para descargar el reporte');
+      return;
+    }
+
+    setIsDownloading(true);
+    try {
+      const selectedSemester = semesters.find(s => s.id === semesterId);
+      const semesterName = selectedSemester?.name || 'Semestre';
+      
+      await reportsService.downloadReportPDF(semesterId, semesterName);
+      toast.success('Reporte descargado exitosamente');
+    } catch (error) {
+      console.error('Error descargando reporte:', error);
+      toast.error('Error al descargar el reporte. Inténtalo de nuevo.');
+    } finally {
+      setIsDownloading(false);
+    }
+  };
 
 
   return (
     <div className="p-8">
-
+      <div className="mb-6 flex justify-between items-center">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Reportes de Postulaciones</h1>
+          <p className="text-gray-600 mt-1">Visualiza y descarga reportes de evaluación por semestre</p>
+        </div>
+        <button
+          onClick={handleDownloadPDF}
+          disabled={isDownloading || semesterId === 'all'}
+          className={`flex items-center gap-2 px-6 py-3 rounded-xl font-medium transition-all ${
+            semesterId === 'all' || isDownloading
+              ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+              : 'bg-[#006837] text-white hover:bg-[#005828] shadow-lg hover:shadow-xl'
+          }`}
+        >
+          {isDownloading ? (
+            <>
+              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              Descargando...
+            </>
+          ) : (
+            <>
+              <FileDown size={20} />
+              Descargar PDF
+            </>
+          )}
+        </button>
+      </div>
 
       <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
         <div className="p-6 border-b border-gray-200">
@@ -150,23 +227,44 @@ export const ReportsPage = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {filtered.map((row,i) => (
-                <tr key={row.athlete_name} className="hover:bg-gray-50">
+              {isLoading ? (
+                <tr>
+                  <td colSpan={5} className="px-6 py-12 text-center">
+                    <div className="flex flex-col items-center justify-center">
+                      <div className="w-8 h-8 border-4 border-[#006837] border-t-transparent rounded-full animate-spin mb-4"></div>
+                      <p className="text-gray-500">Cargando reportes...</p>
+                    </div>
+                  </td>
+                </tr>
+              ) : filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-6 py-12 text-center">
+                    <div className="flex flex-col items-center justify-center">
+                      <p className="text-gray-500 text-lg mb-2">No hay datos disponibles</p>
+                      <p className="text-gray-400 text-sm">
+                        {search ? 'No se encontraron resultados para tu búsqueda' : 'No hay postulaciones para mostrar'}
+                      </p>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                filtered.map((row,i) => (
+                <tr key={row?.athlete_name || `row-${i}`} className="hover:bg-gray-50">
                   <td className="px-6 py-4 text-center">
                     {i+1}
                   </td>
                   <td className="px-6 py-4">
-                    <div className="font-medium text-gray-900">{row.athlete_name}</div>
+                    <div className="font-medium text-gray-900">{row?.athlete_name || 'Nombre no disponible'}</div>
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex items-center">
                       <div className="w-full bg-gray-200 rounded-full h-2 mr-2 overflow-hidden">
                         <div
                           className="bg-[#006837] h-2"
-                          style={{ width: `${((row.sports_score / maxSports) * 100).toFixed(2)}%` }}
+                          style={{ width: `${(((row?.sports_score || 0) / maxSports) * 100).toFixed(2)}%` }}
                         />
                       </div>
-                      <span className="text-sm font-medium">{row.sports_score.toFixed(2)}</span>
+                      <span className="text-sm font-medium">{(row?.sports_score || 0).toFixed(2)}</span>
                     </div>
                   </td>
                   <td className="px-6 py-4">
@@ -174,17 +272,18 @@ export const ReportsPage = () => {
                       <div className="w-full bg-gray-200 rounded-full h-2 mr-2 overflow-hidden">
                         <div
                           className="bg-[#A8D08D] h-2"
-                          style={{ width: `${((row.morpho_score / maxMorpho) * 100).toFixed(2)}%` }}
+                          style={{ width: `${(((row?.morpho_score || 0) / maxMorpho) * 100).toFixed(2)}%` }}
                         />
                       </div>
-                      <span className="text-sm font-medium">{row.morpho_score.toFixed(2)}</span>
+                      <span className="text-sm font-medium">{(row?.morpho_score || 0).toFixed(2)}</span>
                     </div>
                   </td>
                   <td className="px-6 py-4">
-                    <span className="font-medium text-gray-900">{row.total_score.toFixed(2)}</span>
+                    <span className="font-medium text-gray-900">{(row?.total_score || 0).toFixed(2)}</span>
                   </td>
                 </tr>
-              ))}
+                ))
+              )}
             </tbody>
           </table>
         </div>

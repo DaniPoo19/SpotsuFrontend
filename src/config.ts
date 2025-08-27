@@ -1,5 +1,5 @@
 // URL base de la API
-export const API_URL = 'https://backend.spotsu.site/api';
+export const API_URL = import.meta.env.VITE_API_URL || '/api';
 
 // Configuración de axios
 export const axiosConfig = {

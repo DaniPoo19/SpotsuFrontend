@@ -9,6 +9,13 @@ export interface Aspirant {
     consentForm: boolean;
   };
   evaluated?: boolean;
+  postulations?: Array<{
+    id: string;
+    semester?: {
+      name?: string;
+      is_active?: boolean;
+    };
+  }>;
   sportsHistory: {
     sport: string;
     years: number;
@@ -18,6 +25,8 @@ export interface Aspirant {
     approved?: boolean;
   }[];
   personalInfo: {
+    firstName: string;
+    lastName: string;
     email: string;
     phone: string;
     emergencyPhone: string;

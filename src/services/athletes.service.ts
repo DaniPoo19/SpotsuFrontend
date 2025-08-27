@@ -15,7 +15,7 @@ export interface PostulationDTO {
 }
 
 class AthletesService {
-  private readonly API_URL = `${import.meta.env.VITE_API_URL || 'https://backend.spotsu.site/api'}/athletes`;
+  private readonly API_URL = `${import.meta.env.VITE_API_URL || '/api'}/athletes`;
 
   async createAthlete(athleteData: any): Promise<Athlete> {
     try {

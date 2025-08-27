@@ -2,7 +2,7 @@ import axios from 'axios';
 
 // Configuración base de la API
 export const api = axios.create({
-  baseURL: 'https://backend.spotsu.site/api',
+  baseURL: import.meta.env.VITE_API_URL || '/api',
   headers: {
     'Content-Type': 'application/json',
   },

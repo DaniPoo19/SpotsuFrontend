@@ -4,7 +4,7 @@ import { toast } from 'react-hot-toast';
 // Configuración de la API
 const API_CONFIG = {
   // Nueva URL base del backend desplegado
-  BASE_URL: import.meta.env.VITE_API_URL || 'https://backend.spotsu.site/api',
+  BASE_URL: import.meta.env.VITE_API_URL || '/api',
   // Ya no necesitamos prefijo porque la base incluye /api
   API_PREFIX: ''
 } as const;

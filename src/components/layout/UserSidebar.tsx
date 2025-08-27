@@ -45,7 +45,7 @@ const userMenuItems = [
     disabled: true
   },
   {
-    path: '/user-dashboard/sports-history',
+    path: '/user-dashboard/sports-history-management',
     icon: BookOpen,
     label: 'Historial Deportivo',
     disabled: false
