@@ -27,29 +27,31 @@ export class ParQService {
         responses
       });
 
+      // 1. Dar formato al arreglo de respuestas según el DTO esperado en el backend
       const formattedResponses = Object.entries(responses).map(([questionId, response]) => ({
         postulation_id: postulationId,
         question_id: questionId,
-        response: response
+        response
       }));
 
-      // Enviar respuestas y actualizar estado inmediatamente si encontramos una positiva
-      for (const response of formattedResponses) {
-        console.log('[PAR-Q Submit] Enviando respuesta individual:', response);
-        const result = await api.post('/par-q-responses', response);
-        console.log('[PAR-Q Submit] Respuesta guardada:', result.data);
+      // 2. Determinar si existe al menos una respuesta positiva
+      const hasPositiveResponse = formattedResponses.some(r => r.response === true);
 
-        // Si es una respuesta positiva, actualizar el estado inmediatamente
-        if (response.response === true) {
-          await postulationService.updatePostulationStatus(postulationId, 'cancelled');
-          console.log('[PAR-Q Submit] Postulación cancelada debido a respuesta positiva');
-          return; // Terminar aquí, no necesitamos continuar
-        }
+      // 3. Enviar todas las respuestas en un solo request
+      console.log('[PAR-Q Submit] Enviando lote de respuestas:', formattedResponses.length);
+      const result = await api.post('/par-q-responses', formattedResponses);
+      console.log('[PAR-Q Submit] Respuestas guardadas:', result.data);
+
+      // 4. Actualizar estado de la postulación según las respuestas
+      if (hasPositiveResponse) {
+        // Si existe alguna respuesta positiva, la postulación se cancela
+        await postulationService.updatePostulationStatus(postulationId, 'cancelled');
+        console.log('[PAR-Q Submit] Postulación cancelada debido a respuesta positiva');
+      } else {
+        // Si todas las respuestas son negativas, marcamos el PAR-Q como completado
+        await postulationService.updateParQCompletion(postulationId);
+        console.log('[PAR-Q Submit] Estado de postulación actualizado (todas las respuestas negativas)');
       }
-
-      // Si llegamos aquí, todas las respuestas fueron negativas
-      await postulationService.updateParQCompletion(postulationId);
-      console.log('[PAR-Q Submit] Estado de postulación actualizado (todas las respuestas negativas)');
     } catch (error: any) {
       console.error('[PAR-Q Submit Error]:', error.response?.data || error.message);
       throw new Error(error.response?.data?.message || 'Error al enviar las respuestas');
