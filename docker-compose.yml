@@ -9,4 +9,16 @@ services:
     restart: unless-stopped
     environment:
       - NODE_ENV=production
-    depends_on: []
+      - VITE_API_URL=/api
+    volumes:
+      # Opcional: para logs de nginx
+      - nginx_logs:/var/log/nginx
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  nginx_logs:
