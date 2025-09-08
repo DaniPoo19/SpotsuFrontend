@@ -4,21 +4,15 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        VITE_API_URL: http://localhost:3000/spotsu/api/v1
     ports:
-      - "80:80"
+      - "5173:80"
     restart: unless-stopped
-    environment:
-      - NODE_ENV=production
-      - VITE_API_URL=/api
-    volumes:
-      # Opcional: para logs de nginx
-      - nginx_logs:/var/log/nginx
     networks:
-      - app-network
+      spotsu-network:
+        ipv4_address: 172.20.10.12
 
 networks:
-  app-network:
-    driver: bridge
-
-volumes:
-  nginx_logs:
+  spotsu-network:
+    external: true
