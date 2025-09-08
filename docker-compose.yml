@@ -7,7 +7,7 @@ services:
       args:
         VITE_API_URL: http://172.20.10.11:3000/spotsu/api/v1
     ports:
-      - "80:80"
+      - "5173:80"
     restart: unless-stopped
     networks:
       spotsu-network:
