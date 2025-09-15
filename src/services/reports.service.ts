@@ -54,8 +54,9 @@ class ReportsService {
     }
   }
 
-  async downloadCombinedReportPDF(semesterIds: string[], semesterNames: string[] = []): Promise<void> {
+  async downloadCombinedReportPDF(_semesterIds: string[], _semesterNames: string[] = []): Promise<void> {
     try {
+      console.log('[Reports] Descargando reporte combinado PDF...');
       const response = await api.get('/postulations/report/combined/pdf', {
         responseType: 'blob', // Importante para recibir el PDF como blob
         headers: {
@@ -84,8 +85,12 @@ class ReportsService {
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
       
-    } catch (error) {
-      console.error('Error al descargar reporte combinado:', error);
+    } catch (error: any) {
+      console.error('[Reports] Error al descargar reporte combinado:', error);
+      if (error.response?.status === 400) {
+        console.error('[Reports] Error 400 - Bad Request:', error.response.data);
+        throw new Error('Error en el servidor al generar el reporte. Verifique que hay datos disponibles.');
+      }
       throw new Error('No se pudo descargar el reporte combinado. Inténtalo de nuevo.');
     }
   }

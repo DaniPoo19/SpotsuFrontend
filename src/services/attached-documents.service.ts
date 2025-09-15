@@ -57,10 +57,17 @@ export const attachedDocumentsService = {
 
   async getDocuments(): Promise<any[]> {
     try {
+      console.log('[AttachedDocuments] Obteniendo documentos desde:', ENDPOINTS.ATTACHED_DOCUMENTS);
       const response = await axiosInstance.get<ApiResponse<any[]>>(ENDPOINTS.ATTACHED_DOCUMENTS);
-      return response.data.data;
+      console.log('[AttachedDocuments] Respuesta recibida:', response.data);
+      return response.data.data || [];
     } catch (error: any) {
-      console.error('Error al obtener documentos:', error);
+      console.error('[AttachedDocuments] Error al obtener documentos:', error);
+      if (error.response?.status === 400) {
+        console.error('[AttachedDocuments] Error 400 - Bad Request:', error.response.data);
+        // Retornar array vacío en lugar de lanzar error para evitar romper la UI
+        return [];
+      }
       throw new Error('Error al obtener documentos');
     }
   },

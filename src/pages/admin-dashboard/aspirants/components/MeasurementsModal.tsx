@@ -88,7 +88,18 @@ export const MeasurementsModal = memo(({
 
   // Validar rangos según los pesos morfológicos
   const validateMeasurement = useCallback((variable: MorphologicalVariable | undefined, value: number) => {
-    if (!variable || !aspirant) return { isValid: true, score: 0, range: null };
+    // Si no hay variable o aspirante, permitir valores básicos válidos
+    if (!variable || !aspirant) {
+      // Validaciones básicas: altura entre 100-250 cm, peso entre 30-200 kg
+      const isValid = variable ? 
+        (variable.name.toLowerCase().includes('height') || variable.name.toLowerCase().includes('altura')) ? 
+          value >= 100 && value <= 250 :
+          (variable.name.toLowerCase().includes('weight') || variable.name.toLowerCase().includes('peso')) ?
+            value >= 30 && value <= 200 : true
+        : true;
+      
+      return { isValid, score: 0, range: null };
+    }
 
     // Filtrar weights válidos antes de aplicar la lógica de validación
     const validWeights = weights.filter(w => 
@@ -98,11 +109,31 @@ export const MeasurementsModal = memo(({
       w.sport
     );
 
+    // Si no hay weights configurados, usar validaciones básicas
+    if (validWeights.length === 0) {
+      const isValid = (variable.name.toLowerCase().includes('height') || variable.name.toLowerCase().includes('altura')) ? 
+        value >= 100 && value <= 250 :
+        (variable.name.toLowerCase().includes('weight') || variable.name.toLowerCase().includes('peso')) ?
+          value >= 30 && value <= 200 : true;
+      
+      return { isValid, score: 0, range: null };
+    }
+
     const applicableWeights = validWeights.filter(w => 
       w.morphological_variable?.id === variable.id &&
       w.gender?.name?.toLowerCase().startsWith((aspirant.gender || '').charAt(0).toLowerCase()) &&
       (!aspirant.discipline || w.sport?.name?.toLowerCase() === aspirant.discipline.toLowerCase())
     );
+
+    // Si no hay weights aplicables, usar validaciones básicas
+    if (applicableWeights.length === 0) {
+      const isValid = (variable.name.toLowerCase().includes('height') || variable.name.toLowerCase().includes('altura')) ? 
+        value >= 100 && value <= 250 :
+        (variable.name.toLowerCase().includes('weight') || variable.name.toLowerCase().includes('peso')) ?
+          value >= 30 && value <= 200 : true;
+      
+      return { isValid, score: 0, range: null };
+    }
 
     // Buscar el rango que contiene el valor
     const matchingWeight = applicableWeights.find(w => 
@@ -117,10 +148,10 @@ export const MeasurementsModal = memo(({
       };
     }
 
-    // Si no está en ningún rango, encontrar el más cercano para mostrar información
+    // Si no está en ningún rango, mostrar información pero permitir el valor
     const allRanges = applicableWeights.map(w => ({ min: w.min_value, max: w.max_value, score: w.score }));
     return {
-      isValid: false,
+      isValid: true, // Cambiar a true para permitir valores fuera del rango
       score: 0,
       range: allRanges.length > 0 ? allRanges[0] : null
     };

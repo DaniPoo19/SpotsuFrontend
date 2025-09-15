@@ -224,6 +224,16 @@ export const AspirantDetailsPage = () => {
       
       // Recargar los resultados existentes
       await loadExistingResults(post.id);
+      
+      // Actualizar el estado de la postulación a completada si tiene todas las medidas
+      if (hasAllMeasures) {
+        try {
+          await postulationService.updatePostulationStatus(post.id, 'completed');
+          setActivePostulation((prev: any) => prev ? { ...prev, status: 'completed' } : prev);
+        } catch (statusError) {
+          console.warn('Error al actualizar estado de postulación:', statusError);
+        }
+      }
     } catch (error: any) {
       console.error('Error al guardar medidas:', error);
       throw new Error(error.response?.data?.message || 'Error al guardar las medidas');
