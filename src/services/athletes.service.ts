@@ -60,7 +60,7 @@ class AthletesService {
           athlete.document_number === documentNumber
         );
 
-        console.log('Atleta encontrado para el usuario:', userAthlete);
+        console.log('Atleta encontrado para el usuario:', userAthlete || 'No encontrado');
         return userAthlete || null;
       }
       return null;

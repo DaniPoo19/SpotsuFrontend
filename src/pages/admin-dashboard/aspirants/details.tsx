@@ -273,11 +273,23 @@ export const AspirantDetailsPage = () => {
   const uploadsBase = `${import.meta.env.VITE_API_URL || '/api'}/uploads/`;
 
   const fetchPostulationForAthlete = async (athleteId: string) => {
-    let post: any = await athletesService.getActivePostulation(athleteId);
-    if (post) {
-      return post;
-    }
     try {
+      // Primero intentar obtener la postulación activa
+      let post: any = await athletesService.getActivePostulation(athleteId);
+      
+      if (post?.id) {
+        // Si encontramos una postulación, obtener los datos completos
+        try {
+          const fullPost = await postulationService.getPostulationById(post.id);
+          console.log('[Details] Postulación activa encontrada con datos completos:', fullPost);
+          return fullPost;
+        } catch (err) {
+          console.warn('[Details] Error al obtener datos completos de postulación activa:', err);
+          return post; // Retornar datos básicos si falla
+        }
+      }
+
+      // Si no hay postulación activa, buscar en todas las postulaciones
       const posts = await postulationService.getPostulationsByAthlete(athleteId);
       // Mantener solo postulaciones del atleta (por si la API trae demás)
       const ownPosts = posts.filter(p => p.athlete?.id === athleteId);
@@ -285,7 +297,7 @@ export const AspirantDetailsPage = () => {
       // Filtrar por estados vigentes (active o pending)
       const preferred = ['active','pending'];
       post = ownPosts.find(p => preferred.includes(p.status));
-      if (!post && posts.length) {
+      if (!post && ownPosts.length) {
         // ordenar por fecha entre sus propias postulaciones
         const sorted = [...ownPosts].sort((a:any,b:any) => {
           const da = new Date(a.updated_at || a.created_at || 0).getTime();
@@ -294,10 +306,20 @@ export const AspirantDetailsPage = () => {
         });
         post = sorted[0];
       }
-      if (post) {
-      } else {
+
+      // Si encontramos una postulación, obtener los datos completos
+      if (post?.id) {
+        try {
+          const fullPost = await postulationService.getPostulationById(post.id);
+          console.log('[Details] Postulación encontrada con datos completos:', fullPost);
+          return fullPost;
+        } catch (err) {
+          console.warn('[Details] Error al obtener datos completos de postulación:', err);
+          return post; // Retornar datos básicos si falla
+        }
       }
-      return post;
+
+      return null;
     } catch (err) {
       console.error('[Details] Error al obtener postulaciones con postulationService:', err);
       return null;
@@ -311,15 +333,9 @@ export const AspirantDetailsPage = () => {
       if (historyLoadedRef.current.has(activePostulation.id)) return;
 
       try {
-        // Usar la postulación ya obtenida
-        const post = activePostulation;
-        if (!post) return;
-
-        const postulation = await postulationService.getPostulationById(post.id);
-           
-           // Actualizar la postulación activa para que contenga los documentos adjuntos completos
-           setActivePostulation(postulation);
-
+        console.log('[Details] Cargando historial deportivo para postulación:', activePostulation.id);
+        console.log('[Details] Postulación completa:', activePostulation);
+        
         // Obtener documentos adjuntos relacionados a logros para enlazar certificados
         let docsByAchievement: Record<string, string> = {};
         try {
@@ -338,10 +354,18 @@ export const AspirantDetailsPage = () => {
         const formattedHistory: SportHistoryItem[] = [];
         const seenAch = new Set<string>();
 
-        (postulation.postulation_sports || []).forEach((ps: any) => {
-          if (!ps.postulation_sport_achievements || ps.postulation_sport_achievements.length === 0) return;
+        console.log('[Details] Postulation sports:', activePostulation.postulation_sports);
+
+        (activePostulation.postulation_sports || []).forEach((ps: any) => {
+          if (!ps.postulation_sport_achievements || ps.postulation_sport_achievements.length === 0) {
+            console.log('[Details] No hay logros para deporte:', ps.sport?.name);
+            return;
+          }
+          
           const sportName = ps.sport?.name || '';
           const yearsExp = ps.experience_years ?? 0;
+
+          console.log('[Details] Procesando deporte:', sportName, 'con', ps.postulation_sport_achievements.length, 'logros');
 
           (ps.postulation_sport_achievements || []).forEach((psa: any) => {
             const ach = psa.sports_achievement || {};
@@ -388,9 +412,8 @@ export const AspirantDetailsPage = () => {
           });
         });
 
-        if (formattedHistory.length > 0) {
-          setSportsHistory(formattedHistory);
-        }
+        console.log('[Details] Historial deportivo formateado:', formattedHistory);
+        setSportsHistory(formattedHistory);
         historyLoadedRef.current.add(activePostulation.id);
       } catch (err) {
         console.error('[Details] Error cargando historial deportivo:', err);
@@ -407,25 +430,26 @@ export const AspirantDetailsPage = () => {
       if (docsLoadedRef.current.has(activePostulation.id)) return;
 
       try {
-        // Obtener la postulación activa
-        const post = activePostulation;
-        if (!post) return;
-
-        // Si la postulación ya contiene los documentos, usarlos directamente. Evita llamada extra al servicio.
-        let postulationDocs: any[] = post.attached_documents && post.attached_documents.length
-          ? post.attached_documents
+        console.log('[Details] Cargando documentos adjuntos para postulación:', activePostulation.id);
+        
+        // Si la postulación ya contiene los documentos, usarlos directamente
+        let postulationDocs: any[] = activePostulation.attached_documents && activePostulation.attached_documents.length
+          ? activePostulation.attached_documents
           : [];
+
+        console.log('[Details] Documentos en postulación:', postulationDocs);
 
         if (postulationDocs.length === 0) {
           // Fallback: obtener todos los documentos adjuntos y filtrar
+          console.log('[Details] No hay documentos en postulación, buscando en servicio...');
           const allDocs = await attachedDocumentsService.getDocuments();
           
-
           postulationDocs = allDocs.filter(doc => 
-            (doc.postulation?.id === post.id) ||
-            doc.postulation_id === post.id ||
-            (doc.reference_id === post.id && doc.reference_type === 'postulation')
+            (doc.postulation?.id === activePostulation.id) ||
+            doc.postulation_id === activePostulation.id ||
+            (doc.reference_id === activePostulation.id && doc.reference_type === 'postulation')
           );
+          console.log('[Details] Documentos encontrados en servicio:', postulationDocs);
         }
 
         // Identificar documentos específicos por tipo
@@ -434,6 +458,7 @@ export const AspirantDetailsPage = () => {
           // Eliminar acentos para comparaciones robustas
           return base.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
         };
+        
         const medicalCert = postulationDocs.find(doc => {
           const typeName = normalize(doc.attachedDocumentType?.name);
           return typeName.includes('medic'); // coincide con "medico" o "médico"
@@ -444,12 +469,14 @@ export const AspirantDetailsPage = () => {
           return typeName.includes('consent'); // "Consentimiento Informado"
         });
 
+        console.log('[Details] Certificado médico encontrado:', medicalCert);
+        console.log('[Details] Consentimiento informado encontrado:', consentForm);
+
         setAttachedDocs({
           medicalCertificate: medicalCert ? { id: medicalCert.id, path: (medicalCert.path || medicalCert.file_path) } : undefined,
           consentForm: consentForm ? { id: consentForm.id, path: (consentForm.path || consentForm.file_path) } : undefined,
         });
         docsLoadedRef.current.add(activePostulation.id);
-        // docs cargados
       } catch (err) {
         console.error('[Details] Error cargando documentos adjuntos:', err);
       }
@@ -502,19 +529,31 @@ export const AspirantDetailsPage = () => {
   const openMeasurementsModal = async () => {
     // Asegurar que la postulación y resultados estén listos antes de abrir
     if (!aspirant) return;
-    if (!activePostulation) {
-      const post = await fetchPostulationForAthlete(aspirant.id);
-      setActivePostulation(post);
-      if (post?.id) {
-        await initializeMeasurementsForPostulation(post.id);
+    
+    // Verificar que los datos morfológicos estén cargados
+    if (!isMorphoLoaded || !morphologicalVariables.length || !weights.length) {
+      console.warn('Datos morfológicos no están listos');
+      return;
+    }
+    
+    let currentPostulation = activePostulation;
+    
+    if (!currentPostulation) {
+      currentPostulation = await fetchPostulationForAthlete(aspirant.id);
+      setActivePostulation(currentPostulation);
+      if (currentPostulation?.id) {
+        await initializeMeasurementsForPostulation(currentPostulation.id);
       }
     } else if (!isMeasurementsReady) {
-      await initializeMeasurementsForPostulation(activePostulation.id);
+      await initializeMeasurementsForPostulation(currentPostulation.id);
     }
-    // Esperar a que variables/pesos estén cargados para evitar cálculo tardío y parpadeo
-    if (!isMorphoLoaded) {
-      await new Promise(r => setTimeout(r, 50));
+    
+    // Verificar que tenemos una postulación válida antes de abrir el modal
+    if (!currentPostulation?.id) {
+      console.error('No se encontró una postulación válida para este aspirante');
+      return;
     }
+    
     setIsModalOpen(true);
   };
 

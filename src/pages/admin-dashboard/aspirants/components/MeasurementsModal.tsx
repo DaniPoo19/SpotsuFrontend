@@ -90,10 +90,18 @@ export const MeasurementsModal = memo(({
   const validateMeasurement = useCallback((variable: MorphologicalVariable | undefined, value: number) => {
     if (!variable || !aspirant) return { isValid: true, score: 0, range: null };
 
-    const applicableWeights = weights.filter(w => 
-      w.morphological_variable.id === variable.id &&
-      w.gender.name.toLowerCase().startsWith((aspirant.gender || '').charAt(0).toLowerCase()) &&
-      (!aspirant.discipline || w.sport.name.toLowerCase() === aspirant.discipline.toLowerCase())
+    // Filtrar weights válidos antes de aplicar la lógica de validación
+    const validWeights = weights.filter(w => 
+      w && 
+      w.morphological_variable && 
+      w.gender && 
+      w.sport
+    );
+
+    const applicableWeights = validWeights.filter(w => 
+      w.morphological_variable?.id === variable.id &&
+      w.gender?.name?.toLowerCase().startsWith((aspirant.gender || '').charAt(0).toLowerCase()) &&
+      (!aspirant.discipline || w.sport?.name?.toLowerCase() === aspirant.discipline.toLowerCase())
     );
 
     // Buscar el rango que contiene el valor
