@@ -132,18 +132,28 @@ export const ReportsPage = () => {
   const toggleSortOrder = () => setSortOrder(p=> p==='asc'?'desc':'asc');
 
   const handleDownloadPDF = async () => {
-    if (!semesterId || semesterId === 'all') {
-      toast.error('Por favor selecciona un semestre específico para descargar el reporte');
+    if (!semesterId) {
+      toast.error('Por favor selecciona un semestre para descargar el reporte');
       return;
     }
 
     setIsDownloading(true);
     try {
-      const selectedSemester = semesters.find(s => s.id === semesterId);
-      const semesterName = selectedSemester?.name || 'Semestre';
-      
-      await reportsService.downloadReportPDF(semesterId, semesterName);
-      toast.success('Reporte descargado exitosamente');
+      if (semesterId === 'all') {
+        // Para reporte combinado de todos los semestres
+        const semesterIds = semesters.filter(s => s.id !== 'all').map(s => s.id);
+        const semesterNames = semesters.filter(s => s.id !== 'all').map(s => s.name);
+        
+        await reportsService.downloadCombinedReportPDF(semesterIds, semesterNames);
+        toast.success('Reporte combinado descargado exitosamente');
+      } else {
+        // Para un semestre específico
+        const selectedSemester = semesters.find(s => s.id === semesterId);
+        const semesterName = selectedSemester?.name || 'Semestre';
+        
+        await reportsService.downloadReportPDF(semesterId, semesterName);
+        toast.success('Reporte descargado exitosamente');
+      }
     } catch (error) {
       console.error('Error descargando reporte:', error);
       toast.error('Error al descargar el reporte. Inténtalo de nuevo.');
@@ -162,9 +172,9 @@ export const ReportsPage = () => {
         </div>
         <button
           onClick={handleDownloadPDF}
-          disabled={isDownloading || semesterId === 'all'}
+          disabled={isDownloading || !semesterId}
           className={`flex items-center gap-2 px-6 py-3 rounded-xl font-medium transition-all ${
-            semesterId === 'all' || isDownloading
+            !semesterId || isDownloading
               ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
               : 'bg-[#006837] text-white hover:bg-[#005828] shadow-lg hover:shadow-xl'
           }`}

@@ -56,13 +56,64 @@ class ReportsService {
 
   async downloadCombinedReportPDF(semesterIds: string[], semesterNames: string[] = []): Promise<void> {
     try {
-      // Para reportes combinados, necesitaremos hacer múltiples llamadas
-      // Por ahora, descargaremos el primer semestre como ejemplo
-      if (semesterIds.length > 0) {
-        const firstSemesterId = semesterIds[0];
-        const firstSemesterName = semesterNames[0] || 'Todos-los-semestres';
-        await this.downloadReportPDF(firstSemesterId, firstSemesterName);
+      if (semesterIds.length === 0) {
+        throw new Error('No hay semestres disponibles para generar el reporte');
       }
+
+      // Obtener datos de todos los semestres
+      const allReportData = await Promise.all(
+        semesterIds.map(async (semesterId, index) => {
+          try {
+            const response = await api.get(`/postulations/report/${semesterId}`);
+            const reportData = response.data.data || response.data;
+            let data: ReportRow[] = [];
+            
+            if (Array.isArray(reportData)) {
+              data = reportData;
+            } else if (reportData && Array.isArray(reportData.data)) {
+              data = reportData.data;
+            }
+            
+            // Agregar información del semestre a cada fila
+            return data.map(row => ({
+              ...row,
+              semester_name: semesterNames[index] || `Semestre ${semesterId}`
+            }));
+          } catch (error) {
+            console.error(`Error obteniendo datos del semestre ${semesterId}:`, error);
+            return [];
+          }
+        })
+      );
+
+      // Combinar todos los datos
+      const combinedData = allReportData.flat();
+      
+      if (combinedData.length === 0) {
+        throw new Error('No hay datos disponibles para generar el reporte combinado');
+      }
+
+      // Crear un blob con los datos combinados como JSON
+      const blob = new Blob([JSON.stringify(combinedData, null, 2)], { 
+        type: 'application/json' 
+      });
+      
+      // Por ahora, descargaremos los datos como JSON
+      // En una implementación futura, se podría generar un PDF combinado
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      
+      const today = new Date().toISOString().split('T')[0];
+      const fileName = `reporte-combinado-todos-los-semestres-${today}.json`;
+      link.download = fileName;
+      
+      document.body.appendChild(link);
+      link.click();
+      
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      
     } catch (error) {
       console.error('Error al descargar reporte combinado:', error);
       throw new Error('No se pudo descargar el reporte combinado. Inténtalo de nuevo.');
