@@ -1,0 +1,23 @@
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        - VITE_API_URL=https://backend.spotsu.site
+    ports:
+      - "5173:80"
+    restart: unless-stopped
+    volumes:
+      # Opcional: para logs de nginx
+      - nginx_logs:/var/log/nginx
+    networks:
+      spotsu-network:
+        ipv4_address: 172.20.10.12
+
+networks:
+  spotsu-network:
+    external: true
+
+volumes:
+  nginx_logs:
