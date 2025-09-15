@@ -29,28 +29,35 @@ import { sportsService } from '@/services/sports.service';
 export const AspirantDetailsPage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  
+  // Estados principales
   const [aspirant, setAspirant] = useState<Aspirant | undefined>(undefined);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  // Variables morfológicas y pesos (nuevo enfoque simplificado)
+  const [activePostulation, setActivePostulation] = useState<any | null>(null);
+  
+  // Estados de carga optimizados
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadingStates, setLoadingStates] = useState({
+    aspirant: false,
+    postulation: false,
+    documents: false,
+    sportsHistory: false,
+    measurements: false,
+    morphological: false
+  });
+  
+  // Variables morfológicas y pesos
   const [morphologicalVariables, setMorphologicalVariables] = useState<MorphologicalVariable[]>([]);
   const [weights, setWeights] = useState<MorphologicalVariablesWeight[]>([]);
   const [existingResults, setExistingResults] = useState<any[]>([]);
-  const [isMeasurementsReady, setIsMeasurementsReady] = useState<boolean>(false);
-  const [isMorphoLoaded, setIsMorphoLoaded] = useState<boolean>(false);
+  const [hasMeasures, setHasMeasures] = useState<boolean>(false);
+  const [hasAllMeasures, setHasAllMeasures] = useState<boolean>(false);
 
-
-
+  // Documentos adjuntos
   const [attachedDocs, setAttachedDocs] = useState<{
     medicalCertificate?: { id: string; path: string; };
     consentForm?: { id: string; path: string; };
   }>({});
-  // Eliminado resultsLoaded; se carga bajo demanda al abrir modal
-  // Postulación activa cargada para el atleta
-  const [activePostulation, setActivePostulation] = useState<any | null>(null);
-
-  // Estado para saber si ya existen medidas y evitar parpadeos en botón
-  const [hasMeasures, setHasMeasures] = useState<boolean | null>(null);
-  const [hasAllMeasures, setHasAllMeasures] = useState<boolean>(false);
 
   // Historial deportivo cargado de la postulación
   interface SportHistoryItem {
@@ -81,6 +88,22 @@ export const AspirantDetailsPage = () => {
 
   // Ref para no volver a buscar la postulación si ya se hizo una vez
   const postulationFetchedRef = React.useRef(false);
+
+  // Función para actualizar estados de carga
+  const updateLoadingState = (key: keyof typeof loadingStates, value: boolean) => {
+    setLoadingStates(prev => ({ ...prev, [key]: value }));
+  };
+
+  // Función para verificar si todos los datos críticos están cargados
+  const isDataReady = () => {
+    return !loadingStates.aspirant && !loadingStates.postulation && 
+           !loadingStates.morphological && !loadingStates.measurements;
+  };
+
+  // Effect para manejar el estado general de carga
+  useEffect(() => {
+    setIsLoading(!isDataReady());
+  }, [loadingStates]);
 
   const abbreviateDocumentType = (docType: string): string => {
     if (!docType) return 'CC';
@@ -122,10 +145,12 @@ export const AspirantDetailsPage = () => {
     },
   });
 
-  // Fetch aspirant on mount or when id changes
+  // Fetch aspirant on mount or when id changes - OPTIMIZADO
   useEffect(() => {
     const fetchAspirant = async () => {
       if (!id) return;
+      
+      updateLoadingState('aspirant', true);
       try {
         const data = await aspirantsService.getById(id);
         if (data) {
@@ -139,14 +164,18 @@ export const AspirantDetailsPage = () => {
         console.error('Error al obtener aspirante:', error);
         const mock = mockAspirants.find((a: Aspirant) => a.id === id);
         setAspirant(mock);
+      } finally {
+        updateLoadingState('aspirant', false);
       }
     };
 
     fetchAspirant();
   }, [id]);
 
+  // Cargar datos morfológicos - OPTIMIZADO
   useEffect(() => {
     const fetchMorphologicalData = async () => {
+      updateLoadingState('morphological', true);
       try {
         const [vars, wts] = await Promise.all([
           morphologicalService.getVariables(),
@@ -155,10 +184,10 @@ export const AspirantDetailsPage = () => {
 
         setMorphologicalVariables(vars);
         setWeights(wts);
-        setIsMorphoLoaded(true);
       } catch (err) {
         console.error('Error cargando variables morfológicas:', err);
-        setIsMorphoLoaded(true);
+      } finally {
+        updateLoadingState('morphological', false);
       }
     };
 
@@ -253,11 +282,16 @@ export const AspirantDetailsPage = () => {
 
   const initializeMeasurementsForPostulation = async (postulationId: string) => {
     try {
+      console.log('[Details] Inicializando medidas para postulación:', postulationId);
       const results = await morphologicalService.getVariableResults(postulationId);
       setExistingResults(results);
+      
       const meaningful = (results as any[]).filter(r => r.postulation?.id === postulationId && r.result !== null && r.result !== undefined);
       const has = meaningful.length > 0;
+      
+      // Establecer hasMeasures inmediatamente para evitar parpadeo
       setHasMeasures(has);
+      
       // Verificar que existan las tres variables requeridas
       const byIdOrObj = (r: any) => r.morphological_variable_id || r.morphological_variable?.id || '';
       const findVar = (names: string[]) => morphologicalVariables.find(v => names.some(n => v.name.toLowerCase().includes(n)));
@@ -266,16 +300,20 @@ export const AspirantDetailsPage = () => {
       const bmiVar = findVar(['imc','bmi','índice']);
       const ids = new Set(meaningful.map(byIdOrObj));
       const all = !!heightVar && !!weightVar && !!bmiVar && ids.has(heightVar.id) && ids.has(weightVar.id) && ids.has(bmiVar.id);
+      
       setHasAllMeasures(all);
+      
       if (has) {
         setAspirant(prev => prev ? { ...prev, evaluated: true } : prev);
       }
+      
+      console.log('[Details] Medidas inicializadas - has:', has, 'all:', all);
     } catch (err) {
       console.warn('[Details] No se pudieron verificar medidas existentes en init:', err);
       setExistingResults([]);
+      setHasMeasures(false);
       setHasAllMeasures(false);
     }
-    setIsMeasurementsReady(true);
   };
 
   // Utilidad de formato se eliminó; no se usa aquí
@@ -337,11 +375,14 @@ export const AspirantDetailsPage = () => {
   };
 
   // Cargar historial deportivo con certificados de la postulación
+  // Cargar historial deportivo - OPTIMIZADO
   useEffect(() => {
     const loadSportsHistory = async () => {
       if (!activePostulation) return;
       if (historyLoadedRef.current.has(activePostulation.id)) return;
 
+      updateLoadingState('sportsHistory', true);
+      
       try {
         console.log('[Details] Cargando historial deportivo para postulación:', activePostulation.id);
         console.log('[Details] Postulación completa:', activePostulation);
@@ -427,6 +468,8 @@ export const AspirantDetailsPage = () => {
         historyLoadedRef.current.add(activePostulation.id);
       } catch (err) {
         console.error('[Details] Error cargando historial deportivo:', err);
+      } finally {
+        updateLoadingState('sportsHistory', false);
       }
     };
 
@@ -434,11 +477,14 @@ export const AspirantDetailsPage = () => {
   }, [activePostulation]);
 
   // Cargar documentos adjuntos
+  // Cargar documentos adjuntos - OPTIMIZADO
   useEffect(() => {
     const loadAttachedDocuments = async () => {
       if (!aspirant || !activePostulation) return;
       if (docsLoadedRef.current.has(activePostulation.id)) return;
 
+      updateLoadingState('documents', true);
+      
       try {
         console.log('[Details] Cargando documentos adjuntos para postulación:', activePostulation.id);
         
@@ -489,6 +535,8 @@ export const AspirantDetailsPage = () => {
         docsLoadedRef.current.add(activePostulation.id);
       } catch (err) {
         console.error('[Details] Error cargando documentos adjuntos:', err);
+      } finally {
+        updateLoadingState('documents', false);
       }
     };
 
@@ -517,49 +565,65 @@ export const AspirantDetailsPage = () => {
     }
   };
 
-  // Effect to fetch postulation once aspirant is loaded y precargar resultados
+  // Effect to fetch postulation once aspirant is loaded - OPTIMIZADO
   useEffect(() => {
     const obtainPostulation = async () => {
-      if (!aspirant || postulationFetchedRef.current) return; // ya intentado
-      setIsMeasurementsReady(false);
-      setHasMeasures(null);
-      const post = await fetchPostulationForAthlete(aspirant.id);
-      setActivePostulation(post);
-      if (post?.id) {
-        await initializeMeasurementsForPostulation(post.id);
-      } else {
-        setIsMeasurementsReady(true);
+      if (!aspirant || postulationFetchedRef.current) return;
+      
+      updateLoadingState('postulation', true);
+      updateLoadingState('measurements', true);
+      
+      try {
+        const post = await fetchPostulationForAthlete(aspirant.id);
+        setActivePostulation(post);
+        
+        if (post?.id) {
+          await initializeMeasurementsForPostulation(post.id);
+        }
+      } catch (error) {
+        console.error('Error obteniendo postulación:', error);
+      } finally {
+        updateLoadingState('postulation', false);
+        updateLoadingState('measurements', false);
+        postulationFetchedRef.current = true;
       }
-      postulationFetchedRef.current = true;
     };
 
     obtainPostulation();
   }, [aspirant]);
 
   const openMeasurementsModal = async () => {
-    // Asegurar que la postulación y resultados estén listos antes de abrir
+    // Validaciones básicas
     if (!aspirant) return;
     
     // Verificar que los datos morfológicos estén cargados
-    if (!isMorphoLoaded || !morphologicalVariables.length || !weights.length) {
+    if (!morphologicalVariables.length || !weights.length) {
       console.warn('Datos morfológicos no están listos');
       return;
     }
     
-    let currentPostulation = activePostulation;
+    // Si ya tenemos la postulación y las medidas están listas, abrir directamente
+    if (activePostulation?.id && hasMeasures !== undefined) {
+      setIsModalOpen(true);
+      return;
+    }
     
-    if (!currentPostulation) {
-      currentPostulation = await fetchPostulationForAthlete(aspirant.id);
-      setActivePostulation(currentPostulation);
-      if (currentPostulation?.id) {
-        await initializeMeasurementsForPostulation(currentPostulation.id);
+    // Si no tenemos postulación, cargarla
+    if (!activePostulation) {
+      try {
+        const post = await fetchPostulationForAthlete(aspirant.id);
+        setActivePostulation(post);
+        if (post?.id) {
+          await initializeMeasurementsForPostulation(post.id);
+        }
+      } catch (error) {
+        console.error('Error cargando postulación:', error);
+        return;
       }
-    } else if (!isMeasurementsReady) {
-      await initializeMeasurementsForPostulation(currentPostulation.id);
     }
     
     // Verificar que tenemos una postulación válida antes de abrir el modal
-    if (!currentPostulation?.id) {
+    if (!activePostulation?.id) {
       console.error('No se encontró una postulación válida para este aspirante');
       return;
     }
@@ -628,7 +692,7 @@ export const AspirantDetailsPage = () => {
     const initialHeight = heightResult?.result ?? '';
     const initialWeight = weightResult?.result ?? '';
 
-    if (!isMeasurementsReady || !isMorphoLoaded) {
+    if (!morphologicalVariables.length || !weights.length) {
       return (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-[#006837]"></div>
@@ -655,6 +719,52 @@ export const AspirantDetailsPage = () => {
 
 
 
+
+  // Render optimizado con estados de carga
+  if (isLoading) {
+    return (
+      <div className="p-8">
+        <button
+          onClick={() => navigate('/dashboard/aspirants')}
+          className="text-[#006837] hover:text-[#A8D08D] font-medium flex items-center gap-2 mb-6"
+        >
+          <ArrowLeft size={20} />
+          Volver a la lista
+        </button>
+        
+        <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
+          <div className="p-8 text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-t-4 border-b-4 border-[#006837] mx-auto mb-4"></div>
+            <p className="text-gray-600">Cargando información del aspirante...</p>
+            {loadingStates.aspirant && <p className="text-sm text-gray-500 mt-2">Cargando datos personales...</p>}
+            {loadingStates.postulation && <p className="text-sm text-gray-500 mt-2">Cargando postulación...</p>}
+            {loadingStates.morphological && <p className="text-sm text-gray-500 mt-2">Cargando variables morfológicas...</p>}
+            {loadingStates.measurements && <p className="text-sm text-gray-500 mt-2">Verificando medidas...</p>}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!aspirant) {
+    return (
+      <div className="p-8">
+        <button
+          onClick={() => navigate('/dashboard/aspirants')}
+          className="text-[#006837] hover:text-[#A8D08D] font-medium flex items-center gap-2 mb-6"
+        >
+          <ArrowLeft size={20} />
+          Volver a la lista
+        </button>
+        
+        <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
+          <div className="p-8 text-center">
+            <p className="text-gray-600">No se encontró información del aspirante</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-8">
@@ -743,20 +853,26 @@ export const AspirantDetailsPage = () => {
               <Trophy className="text-[#006837]" size={24} />
               <p className="text-gray-600">Logros y certificaciones deportivas del aspirante</p>
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500">Deporte</th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500">Años</th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500">Nivel</th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500">Competencia</th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500">Certificado</th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500">Estado</th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500">Acciones</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
+            {loadingStates.sportsHistory ? (
+              <div className="text-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-[#006837] mx-auto mb-4"></div>
+                <p className="text-gray-500">Cargando historial deportivo...</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500">Deporte</th>
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500">Años</th>
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500">Nivel</th>
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500">Competencia</th>
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500">Certificado</th>
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500">Estado</th>
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
                   {(sportsHistory.length ? sportsHistory : aspirant.sportsHistory).map((history, index): React.ReactNode => (
                     <tr key={index}>
                       <td className="px-6 py-4 whitespace-nowrap">
@@ -826,12 +942,19 @@ export const AspirantDetailsPage = () => {
                   ))}
                 </tbody>
               </table>
-            </div>
+              </div>
+            )}
           </section>
 
           <section className="mt-8">
             <h3 className="text-lg font-semibold mb-4">Documentos Adjuntos</h3>
-            <div className="grid md:grid-cols-2 gap-6">
+            {loadingStates.documents ? (
+              <div className="text-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-[#006837] mx-auto mb-4"></div>
+                <p className="text-gray-500">Cargando documentos adjuntos...</p>
+              </div>
+            ) : (
+              <div className="grid md:grid-cols-2 gap-6">
               {/* Certificado Médico */}
               <div className="bg-white rounded-lg border p-4">
                 <div className="flex items-center justify-between">
@@ -877,7 +1000,8 @@ export const AspirantDetailsPage = () => {
                   )}
                 </div>
               </div>
-            </div>
+              </div>
+            )}
           </section>
 
           {/* Sección de puntajes */}

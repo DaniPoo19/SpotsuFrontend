@@ -38,7 +38,7 @@ export const AspirantsList = () => {
     gender: (dto.gender?.toLowerCase() === 'female' || dto.gender?.startsWith('F')) ? 'female' : 'male',
     discipline: dto.discipline || '',
     documents: dto.documents,
-    evaluated: dto.qualification !== null,
+    evaluated: false, // Se actualizará dinámicamente en fetchStatusesFor
     sportsHistory: dto.sportHistories?.map(h => ({
       sport: h.sport?.name || '',
       years: 0,
@@ -109,27 +109,60 @@ export const AspirantsList = () => {
             : [];
           const sportsLabel = sportNames.length ? sportNames.join(', ') : 'Sin deporte';
 
-          return [a.id, { status: statusLabel, semester: semesterName, sports: sportsLabel }];
+          // Verificar si está calificado (tiene medidas antropométricas)
+          let isEvaluated = false;
+          if (active || posts[0]) {
+            try {
+              const postulationId = (active || posts[0])?.id;
+              if (postulationId) {
+                const { morphologicalService } = await import('@/services/morphological.service');
+                const results = await morphologicalService.getVariableResults(postulationId);
+                const meaningful = results.filter((r: any) => r.result !== null && r.result !== undefined);
+                isEvaluated = meaningful.length > 0;
+              }
+            } catch (err) {
+              console.warn('[AspirantsList] Error verificando medidas para aspirante:', a.id, err);
+            }
+          }
+
+          return [a.id, { 
+            status: statusLabel, 
+            semester: semesterName, 
+            sports: sportsLabel,
+            evaluated: isEvaluated
+          }];
         } catch {
-          return [a.id, 'Sin Postulación'];
+          return [a.id, { status: 'Sin Postulación', semester: 'N/A', sports: 'Sin deporte', evaluated: false }];
         }
       })
     );
     const statusMap: Record<string,string> = {};
     const semesterMap: Record<string,string> = {};
     const sportsMap: Record<string,string> = {};
+    const evaluatedMap: Record<string,boolean> = {};
+    
     entries.forEach(([id, obj]: any) => {
       if (typeof obj === 'string') {
         statusMap[id] = obj;
+        evaluatedMap[id] = false;
       } else {
         statusMap[id] = obj.status;
         semesterMap[id] = obj.semester;
         sportsMap[id] = obj.sports;
+        evaluatedMap[id] = obj.evaluated;
       }
     });
+    
     setPostulationStatuses(statusMap);
     setAspirantSemesters(semesterMap);
     setAspirantSports(sportsMap);
+    
+    // Actualizar el estado evaluated de cada aspirante
+    setAspirants(prev => prev.map(aspirant => ({
+      ...aspirant,
+      evaluated: evaluatedMap[aspirant.id] || false
+    })));
+    
     setIsLoading(false);
   };
 

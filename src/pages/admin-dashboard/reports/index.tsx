@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { Search, ArrowUpDown, Download, FileDown } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Search, ArrowUpDown, FileDown } from 'lucide-react';
 import { api } from '@/lib/axios';
 import { reportsService } from '@/services/reports.service';
 import toast from 'react-hot-toast';
@@ -132,28 +132,32 @@ export const ReportsPage = () => {
   const toggleSortOrder = () => setSortOrder(p=> p==='asc'?'desc':'asc');
 
   const handleDownloadPDF = async () => {
-    if (!semesterId) {
-      toast.error('Por favor selecciona un semestre para descargar el reporte');
+    // Validación mejorada para período seleccionado
+    if (!semesterId || semesterId === '') {
+      toast.error('Debe seleccionar un período para poder descargar el informe');
+      return;
+    }
+
+    // Verificar que hay semestres disponibles
+    if (semesters.length <= 1) {
+      toast.error('No hay períodos disponibles para generar el informe');
+      return;
+    }
+
+    // Validación específica para cuando está seleccionado "Todos"
+    if (semesterId === 'all') {
+      toast.error('Debe seleccionar un período específico para poder descargar el informe. "Todos" no es válido para la descarga.');
       return;
     }
 
     setIsDownloading(true);
     try {
-      if (semesterId === 'all') {
-        // Para reporte combinado de todos los semestres
-        const semesterIds = semesters.filter(s => s.id !== 'all').map(s => s.id);
-        const semesterNames = semesters.filter(s => s.id !== 'all').map(s => s.name);
-        
-        await reportsService.downloadCombinedReportPDF(semesterIds, semesterNames);
-        toast.success('Reporte combinado descargado exitosamente');
-      } else {
-        // Para un semestre específico
-        const selectedSemester = semesters.find(s => s.id === semesterId);
-        const semesterName = selectedSemester?.name || 'Semestre';
-        
-        await reportsService.downloadReportPDF(semesterId, semesterName);
-        toast.success('Reporte descargado exitosamente');
-      }
+      // Para un semestre específico
+      const selectedSemester = semesters.find(s => s.id === semesterId);
+      const semesterName = selectedSemester?.name || 'Semestre';
+      
+      await reportsService.downloadReportPDF(semesterId, semesterName);
+      toast.success('Reporte descargado exitosamente');
     } catch (error) {
       console.error('Error descargando reporte:', error);
       toast.error('Error al descargar el reporte. Inténtalo de nuevo.');
@@ -172,12 +176,21 @@ export const ReportsPage = () => {
         </div>
         <button
           onClick={handleDownloadPDF}
-          disabled={isDownloading || !semesterId}
+          disabled={isDownloading || !semesterId || semesterId === '' || semesterId === 'all' || semesters.length <= 1}
           className={`flex items-center gap-2 px-6 py-3 rounded-xl font-medium transition-all ${
-            !semesterId || isDownloading
+            !semesterId || semesterId === '' || semesterId === 'all' || semesters.length <= 1 || isDownloading
               ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
               : 'bg-[#006837] text-white hover:bg-[#005828] shadow-lg hover:shadow-xl'
           }`}
+          title={
+            !semesterId || semesterId === '' 
+              ? 'Debe seleccionar un período para poder descargar el informe'
+              : semesterId === 'all'
+              ? 'Debe seleccionar un período específico para poder descargar el informe'
+              : semesters.length <= 1
+              ? 'No hay períodos disponibles para generar el informe'
+              : 'Descargar reporte en formato PDF'
+          }
         >
           {isDownloading ? (
             <>
