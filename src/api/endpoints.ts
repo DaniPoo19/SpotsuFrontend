@@ -1,7 +1,7 @@
 /**
  * Endpoints centralizados para la API
  * Estos endpoints son relativos a la baseURL definida en axiosInstance
- * La baseURL ya incluye el prefijo '/spotsu/api/v1'
+ * La baseURL ya incluye el prefijo '/tracksport/api/v1'
  */
 
 const API_ENDPOINTS = {

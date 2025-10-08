@@ -123,7 +123,7 @@ export const LoginPage = () => {
               transition={{ delay: 0.2 }}
               className="text-2xl font-bold text-[#006837]"
             >
-              SPOSTU
+              TRACKSPORT
             </motion.h2>
             <motion.p
               initial={{ opacity: 0 }}

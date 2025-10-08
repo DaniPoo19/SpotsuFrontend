@@ -4,7 +4,7 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        - VITE_API_URL=https://backend.spotsu.site
+        - VITE_API_URL=https://backend.tracksport.site
     ports:
       - "5173:80"
     restart: unless-stopped
@@ -12,11 +12,11 @@ services:
       # Opcional: para logs de nginx
       - nginx_logs:/var/log/nginx
     networks:
-      spotsu-network:
+      tracksport-network:
         ipv4_address: 172.20.10.12
 
 networks:
-  spotsu-network:
+  tracksport-network:
     external: true
 
 volumes:

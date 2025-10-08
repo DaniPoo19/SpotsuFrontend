@@ -58,7 +58,7 @@ export const UserDashboardSidebar = () => {
       <div className="flex flex-col h-full">
         <div className="flex-1">
           <div className="mb-8">
-            <h2 className="text-2xl font-bold text-[#006837]">Spotsu</h2>
+            <h2 className="text-2xl font-bold text-[#006837]">TRACKSPORT</h2>
           </div>
 
           <nav className="space-y-2">

@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "homepage": "https://danipoo19.github.io/SpotsuFrontend/",
+  "homepage": "https://danipoo19.github.io/TracksportFrontend/",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -11,7 +11,7 @@
     "preview": "vite preview",
     "predeploy": "npm run build",
     "deploy": "gh-pages -d build",
-    "prod": "pm2 start serve --name spotsu-frontend -- -s build -l 5174"
+    "prod": "pm2 start serve --name tracksport-frontend -- -s build -l 5174"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",

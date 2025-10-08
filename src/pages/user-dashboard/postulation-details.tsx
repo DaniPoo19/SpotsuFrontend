@@ -765,7 +765,7 @@ export const PostulationDetailsPage = () => {
               <div className="space-y-2">
                 <div className="flex items-center gap-2 text-sm text-green-700">
                   <span>📧</span>
-                  <span>soporte@spotsu.edu.co</span>
+                  <span>soporte@tracksport.edu.co</span>
                 </div>
                 <div className="flex items-center gap-2 text-sm text-green-700">
                   <span>📞</span>

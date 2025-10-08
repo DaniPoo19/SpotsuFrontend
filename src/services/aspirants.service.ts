@@ -1,7 +1,7 @@
 import axiosInstance from '../api/axios';
 import { AspirantDTO, ApiResponse } from '../types/dtos';
 
-// Rutas relativas (sin el prefijo /spotsu/api/v1)
+// Rutas relativas (sin el prefijo /tracksport/api/v1)
 const ENDPOINTS = {
   ATHLETES: '/athletes',
   SPORT_HISTORIES: '/sport-histories',
