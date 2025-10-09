@@ -1,4 +1,4 @@
-# SPOSTU - Sistema de Gestión Deportiva Universitaria
+# TRACKSPORT - Sistema de Gestión Deportiva Universitaria
 
 ## Instalación
 

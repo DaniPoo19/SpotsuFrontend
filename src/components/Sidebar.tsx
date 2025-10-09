@@ -20,7 +20,7 @@ export const Sidebar = () => {
   return (
     <div className="bg-[#006837] text-white h-screen w-64 fixed left-0 top-0 p-4 flex flex-col">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold">SPOSTU</h1>
+        <h1 className="text-2xl font-bold">TRACKSPORT</h1>
       </div>
       
       <nav className="flex-1">

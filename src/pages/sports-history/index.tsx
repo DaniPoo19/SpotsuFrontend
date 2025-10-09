@@ -246,18 +246,28 @@ export const SportsHistoryPage: React.FC = () => {
     try {
       setIsLoadingTypes(true);
       
-      // Obtener tipos de competencia para la categoría
-      console.log('[SportsHistory][handleCategoryChange] Obteniendo tipos de competencia para categoría:', categoryId);
-      const response = await api.get(`/sports-competition-hierarchies/by-category/${categoryId}`);
-      const raw = response.data.data.map((item: any) => ({
-        id: item.competition_hierarchy?.id || item.id || '',
-        name: item.competition_hierarchy?.name || item.name || '',
-        competition_hierarchy: item.competition_hierarchy ?? item,
-        score: item.score ?? 0,
-        is_active: item.is_active ?? true
-      }));
-      // Filtrar duplicados por id
-      const unique: CompetitionHierarchy[] = Array.from(new Map(raw.map((t: any) => [t.id, t])).values()) as CompetitionHierarchy[];
+      // Obtener jerarquías a partir de los logros existentes para la categoría
+      console.log('[SportsHistory][handleCategoryChange] Obteniendo tipos de competencia para categoría (por logros):', categoryId);
+      const resp = await api.get(`/sports-achievements/by-sport-competition-category/${categoryId}`);
+      const achievements = resp.data?.data || [];
+
+      // Extraer jerarquías de competencia únicas
+      const map = new Map<string, CompetitionHierarchy>();
+      achievements.forEach((ach: any) => {
+        const h = ach.competition_hierarchy;
+        if (h && h.id && !map.has(h.id)) {
+          map.set(h.id, {
+            id: h.id,
+            name: h.name,
+            competition_hierarchy: h,
+            //  El puntaje real viene en ach.score
+            score: (typeof ach.score === 'number' ? ach.score : 0),
+            is_active: h.is_active ?? true,
+          } as any);
+        }
+      });
+
+      const unique: CompetitionHierarchy[] = Array.from(map.values());
       competitionTypesCache[categoryId as string] = unique;
       setLocalCompetitionTypes(unique);
       setCompetitionTypes(unique);

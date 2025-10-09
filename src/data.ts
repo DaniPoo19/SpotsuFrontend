@@ -3,7 +3,7 @@ import { Aspirant, User } from './types';
 export const currentUser: User = {
   id: '1',
   name: 'Admin Usuario',
-  email: 'admin@spostu.com',
+  email: 'admin@tracksport.com',
   role: 'admin',
   avatar: 'https://images.unsplash.com/photo-1633332755192-727a05c4013d?w=400',
 };

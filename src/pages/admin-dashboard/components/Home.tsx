@@ -13,7 +13,7 @@ export const Home = () => {
           />
           <div className="p-8">
             <h1 className="text-4xl font-bold text-[#006837] mb-4">
-              Bienvenido a SPOSTU
+              Bienvenido a TRACKSPORT
             </h1>
             <p className="text-gray-600 mb-6">
               Sistema de gestión deportiva universitaria para el seguimiento y evaluación

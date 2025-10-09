@@ -199,7 +199,7 @@ export const UserSidebar = ({ hasAthlete }: UserSidebarProps) => {
           alt="Universidad de Córdoba" 
           className="w-20 mx-auto mb-4"
         />
-        <h1 className="text-2xl font-bold text-center">SPOSTU</h1>
+        <h1 className="text-2xl font-bold text-center">TRACKSPORT</h1>
       </div>
       
       <nav className="flex-1">
