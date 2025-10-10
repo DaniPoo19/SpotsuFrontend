@@ -185,7 +185,7 @@ export const DocumentsPage = () => {
   }, [loadDocuments]);
 
   const handleDownloadDocument = useCallback((document: AttachedDocument) => {
-    const uploadBase = `${import.meta.env.VITE_API_URL || ''}/uploads/`;
+    const uploadBase = `${import.meta.env.VITE_API_URL || '/api'}/uploads/`;
     const fileUrl = document.file_path.startsWith('http') 
       ? document.file_path 
       : `${uploadBase}${document.file_path}`;

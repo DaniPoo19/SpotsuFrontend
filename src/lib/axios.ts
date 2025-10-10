@@ -1,7 +1,8 @@
 import axios from 'axios';
 
 export const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || '/api',
+  // Usar proxy de Vite para evitar problemas de CORS
+  baseURL: '/api',
 });
 
 // Interceptor para agregar el token de autenticación

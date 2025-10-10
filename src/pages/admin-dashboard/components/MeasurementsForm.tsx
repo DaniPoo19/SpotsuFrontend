@@ -22,7 +22,7 @@ const formSchema = z.object({
   visceralFat: z.number().min(0, 'La grasa visceral debe ser mayor a 0'),
   metabolicAge: z.number().min(0, 'La edad metabólica debe ser mayor a 0'),
   boneMass: z.number().min(0, 'La masa ósea debe ser mayor a 0'),
-  pailerTest: z.number().min(0, 'El test de Pailer-Léger debe ser mayor a 0'),
+  potenciaAerobica: z.number().min(0, 'La potencia aeróbica debe ser mayor a 0'),
 });
 
 interface MeasurementsFormProps {
@@ -42,7 +42,7 @@ export const MeasurementsForm = ({ onSubmit, onCancel, initialData }: Measuremen
       visceralFat: 0,
       metabolicAge: 0,
       boneMass: 0,
-      pailerTest: 0,
+      potenciaAerobica: 0,
     },
   });
 
@@ -226,10 +226,10 @@ export const MeasurementsForm = ({ onSubmit, onCancel, initialData }: Measuremen
             />
             <FormField
               control={form.control}
-              name="pailerTest"
+              name="potenciaAerobica"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Test de Pailer-Léger (nivel)</FormLabel>
+                  <FormLabel>Potencia Aeróbica (VO₂máx)</FormLabel>
                   <FormControl>
                     <Input
                       type="number"

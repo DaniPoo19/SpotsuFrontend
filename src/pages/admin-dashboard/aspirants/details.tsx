@@ -26,7 +26,7 @@ import { sportsService } from '@/services/sports.service';
 
 
 
-export const AspirantDetailsPage = () => {
+export const AspirantPage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   
@@ -200,8 +200,21 @@ export const AspirantDetailsPage = () => {
 
   // (limpieza) Lógica de validación y manejo de inputs se realiza en el modal.
 
-  // Nueva función simplificada para manejar el envío de medidas
-  const handleMeasurementSubmit = async (data: { height: number; weight: number; bmi: number }) => {
+  // Tipo para los datos del formulario de medidas
+  interface MeasurementData {
+    estatura: number;
+    pesoCorporal: number;
+    imc: number;
+    masaMuscular: number;
+    masaGrasa: number;
+    grasaVisceral: number;
+    edadMetabolica: number;
+    masaOsea: number;
+    potenciaAerobica: number;
+  }
+
+  // Función para manejar el envío de TODAS las medidas morfológicas
+  const handleMeasurementSubmit = async (data: MeasurementData) => {
     if (!aspirant) return;
 
     // Usar la postulación activa del estado si está disponible, si no, buscarla
@@ -215,38 +228,87 @@ export const AspirantDetailsPage = () => {
       throw new Error('No se encontró una postulación activa para este aspirante');
     }
 
-    // Buscar las variables específicas
-    const heightVar = morphologicalVariables.find(v => 
-      v.name.toLowerCase().includes('height') || 
-      v.name.toLowerCase().includes('altura') || 
-      v.name.toLowerCase().includes('estatura') ||
-      v.name.toLowerCase().includes('talla')
-    );
+    // Utilidad de normalización para coincidencias robustas (sin acentos)
+    const normalize = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
     
-    const weightVar = morphologicalVariables.find(v => 
-      v.name.toLowerCase().includes('weight') || 
-      (v.name.toLowerCase().includes('peso') && !v.name.toLowerCase().includes('muscular'))
-    );
-    
-    const bmiVar = morphologicalVariables.find(v => 
-      v.name.toLowerCase().includes('imc') || 
-      v.name.toLowerCase().includes('bmi') ||
-      v.name.toLowerCase().includes('índice')
-    );
+    // Función para encontrar variable por nombre exacto o similar
+    const findVariable = (exactName: string, alternativeTerms: string[] = []) => {
+      // Primero buscar por nombre exacto
+      let variable = morphologicalVariables.find(v => v.name === exactName);
+      
+      // Si no se encuentra, buscar por términos alternativos
+      if (!variable && alternativeTerms.length > 0) {
+        variable = morphologicalVariables.find(v => {
+          const n = normalize(v.name);
+          return alternativeTerms.some(term => n.includes(normalize(term)));
+        });
+      }
+      
+      return variable;
+    };
 
-    if (!heightVar || !weightVar || !bmiVar) {
-      throw new Error('No se encontraron las variables morfológicas requeridas (altura, peso, IMC)');
+    // Mapeo de variables según los nombres EXACTOS de la BD
+    const variableMap = {
+      estatura: findVariable('Estatura', ['estatura', 'altura', 'height', 'talla']),
+      pesoCorporal: findVariable('Peso Corporal', ['peso corporal', 'peso', 'weight']),
+      imc: findVariable('IMC', ['imc', 'indice de masa corporal', 'bmi']),
+      masaMuscular: findVariable('Masa Muscular', ['masa muscular', 'muscle mass']),
+      masaGrasa: findVariable('Masa Grasa', ['masa grasa', 'fat mass', 'grasa']),
+      grasaVisceral: findVariable('Grasa Visceral', ['grasa visceral', 'visceral fat']),
+      edadMetabolica: findVariable('Edad Metabólica', ['edad metabolica', 'metabolic age']),
+      masaOsea: findVariable('Masa Ósea', ['masa osea', 'bone mass']),
+      potenciaAerobica: findVariable('Potencia Aeróbica', ['potencia aerobica', 'potencia aeróbica', 'aerobica'])
+    };
+
+    // Verificar que todas las variables existan
+    const missingVars: string[] = [];
+    Object.entries(variableMap).forEach(([key, variable]) => {
+      if (!variable) {
+        missingVars.push(key);
+      }
+    });
+
+    if (missingVars.length > 0) {
+      console.error('Variables morfológicas faltantes:', missingVars);
+      console.log('Variables disponibles en BD:', morphologicalVariables.map(v => v.name));
+      throw new Error(`No se encontraron las siguientes variables morfológicas: ${missingVars.join(', ')}`);
     }
 
-    // Preparar payload para el backend
+    // Preparar payload con TODAS las variables
     const payload: VariableResultPayload[] = [
-      { morphological_variable_id: heightVar.id, result: data.height },
-      { morphological_variable_id: weightVar.id, result: data.weight },
-      { morphological_variable_id: bmiVar.id, result: data.bmi }
+      { morphological_variable_id: variableMap.estatura!.id, result: data.estatura },
+      { morphological_variable_id: variableMap.pesoCorporal!.id, result: data.pesoCorporal },
+      { morphological_variable_id: variableMap.imc!.id, result: data.imc },
+      { morphological_variable_id: variableMap.masaMuscular!.id, result: data.masaMuscular },
+      { morphological_variable_id: variableMap.masaGrasa!.id, result: data.masaGrasa },
+      { morphological_variable_id: variableMap.grasaVisceral!.id, result: data.grasaVisceral },
+      { morphological_variable_id: variableMap.edadMetabolica!.id, result: data.edadMetabolica },
+      { morphological_variable_id: variableMap.masaOsea!.id, result: data.masaOsea },
+      { morphological_variable_id: variableMap.potenciaAerobica!.id, result: data.potenciaAerobica }
     ];
 
     try {
-      await morphologicalService.createVariableResults(post.id, payload);
+      console.log('Enviando variables morfológicas:', payload);
+      // Upsert: separar nuevas vs existentes
+      const existing = await morphologicalService.getVariableResults(post.id);
+      const getExistingByVarId = (varId: string) =>
+        existing.find(r => (r.morphological_variable_id ?? r.morphological_variable?.id) === varId);
+
+      const toUpdate = payload
+        .map(p => ({ p, existing: getExistingByVarId(p.morphological_variable_id) }))
+        .filter(x => x.existing)
+        .map(x => ({ id: (x.existing as any).id as string, result: x.p.result }));
+
+      const toCreate = payload.filter(p => !getExistingByVarId(p.morphological_variable_id));
+
+      // Ejecutar actualizaciones en serie para evitar saturar API
+      for (const u of toUpdate) {
+        await morphologicalService.updateVariableResult(u.id, u.result);
+      }
+
+      if (toCreate.length > 0) {
+        await morphologicalService.createVariableResults(post.id, toCreate);
+      }
       
       // Actualizar el estado del aspirante
       setAspirant(prev => prev ? { ...prev, evaluated: true } : prev);
@@ -254,14 +316,16 @@ export const AspirantDetailsPage = () => {
       // Recargar los resultados existentes
       await loadExistingResults(post.id);
       
-      // Actualizar el estado de la postulación a completada si tiene todas las medidas
-      if (hasAllMeasures) {
-        try {
-          await postulationService.updatePostulationStatus(post.id, 'completed');
-          setActivePostulation((prev: any) => prev ? { ...prev, status: 'completed' } : prev);
-        } catch (statusError) {
-          console.warn('Error al actualizar estado de postulación:', statusError);
-        }
+      // Marcar que ahora tiene todas las medidas
+      setHasAllMeasures(true);
+      setHasMeasures(true);
+      
+      // Actualizar el estado de la postulación a completada
+      try {
+        await postulationService.updatePostulationStatus(post.id, 'completed');
+        setActivePostulation((prev: any) => prev ? { ...prev, status: 'completed' } : prev);
+      } catch (statusError) {
+        console.warn('Error al actualizar estado de postulación:', statusError);
       }
     } catch (error: any) {
       console.error('Error al guardar medidas:', error);
@@ -282,7 +346,7 @@ export const AspirantDetailsPage = () => {
 
   const initializeMeasurementsForPostulation = async (postulationId: string) => {
     try {
-      console.log('[Details] Inicializando medidas para postulación:', postulationId);
+      console.log('[] Inicializando medidas para postulación:', postulationId);
       const results = await morphologicalService.getVariableResults(postulationId);
       setExistingResults(results);
       
@@ -292,24 +356,51 @@ export const AspirantDetailsPage = () => {
       // Establecer hasMeasures inmediatamente para evitar parpadeo
       setHasMeasures(has);
       
-      // Verificar que existan las tres variables requeridas
+      // Verificar que existan LAS 9 variables morfológicas requeridas
       const byIdOrObj = (r: any) => r.morphological_variable_id || r.morphological_variable?.id || '';
-      const findVar = (names: string[]) => morphologicalVariables.find(v => names.some(n => v.name.toLowerCase().includes(n)));
-      const heightVar = findVar(['height','altura','estatura','talla']);
-      const weightVar = findVar(['weight','peso']);
-      const bmiVar = findVar(['imc','bmi','índice']);
-      const ids = new Set(meaningful.map(byIdOrObj));
-      const all = !!heightVar && !!weightVar && !!bmiVar && ids.has(heightVar.id) && ids.has(weightVar.id) && ids.has(bmiVar.id);
+      const normalize = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const findVar = (names: string[]) => morphologicalVariables.find(v => {
+        const n = normalize(v.name);
+        return names.some(term => n.includes(normalize(term)));
+      });
       
-      setHasAllMeasures(all);
+      // Buscar las 9 variables requeridas
+      const estaturaVar = findVar(['estatura','altura','height','talla']);
+      const pesoVar = morphologicalVariables.find(v => {
+        const n = normalize(v.name);
+        if (n.includes('muscular')) return false;
+        return ['peso corporal','peso','weight'].some(term => n.includes(normalize(term)));
+      });
+      const imcVar = findVar(['imc','bmi','indice de masa']);
+      const masaMuscularVar = findVar(['masa muscular']);
+      const masaGrasaVar = findVar(['masa grasa']);
+      const grasaVisceralVar = findVar(['grasa visceral']);
+      const edadMetabolicaVar = findVar(['edad metabolica','edad metabólica']);
+      const masaOseaVar = findVar(['masa osea','masa ósea']);
+      const pailerVar = findVar(['pailer test','leger']);
+      
+      const ids = new Set(meaningful.map(byIdOrObj));
+      
+      // Verificar que las 9 variables existan Y tengan resultados
+      const allVariablesFound = !![
+        estaturaVar, pesoVar, imcVar, masaMuscularVar, masaGrasaVar,
+        grasaVisceralVar, edadMetabolicaVar, masaOseaVar, pailerVar
+      ].every(v => v);
+      
+      const allResultsExist = allVariablesFound && [
+        estaturaVar, pesoVar, imcVar, masaMuscularVar, masaGrasaVar,
+        grasaVisceralVar, edadMetabolicaVar, masaOseaVar, pailerVar
+      ].every(v => v && ids.has(v.id));
+      
+      setHasAllMeasures(allResultsExist);
       
       if (has) {
         setAspirant(prev => prev ? { ...prev, evaluated: true } : prev);
       }
       
-      console.log('[Details] Medidas inicializadas - has:', has, 'all:', all);
+      console.log('[] Medidas inicializadas - has:', has, 'all 9 variables:', allResultsExist, 'results count:', meaningful.length);
     } catch (err) {
-      console.warn('[Details] No se pudieron verificar medidas existentes en init:', err);
+      console.warn('[] No se pudieron verificar medidas existentes en init:', err);
       setExistingResults([]);
       setHasMeasures(false);
       setHasAllMeasures(false);
@@ -329,10 +420,10 @@ export const AspirantDetailsPage = () => {
         // Si encontramos una postulación, obtener los datos completos
         try {
           const fullPost = await postulationService.getPostulationById(post.id);
-          console.log('[Details] Postulación activa encontrada con datos completos:', fullPost);
+          console.log('[] Postulación activa encontrada con datos completos:', fullPost);
           return fullPost;
         } catch (err) {
-          console.warn('[Details] Error al obtener datos completos de postulación activa:', err);
+          console.warn('[] Error al obtener datos completos de postulación activa:', err);
           return post; // Retornar datos básicos si falla
         }
       }
@@ -359,17 +450,17 @@ export const AspirantDetailsPage = () => {
       if (post?.id) {
         try {
           const fullPost = await postulationService.getPostulationById(post.id);
-          console.log('[Details] Postulación encontrada con datos completos:', fullPost);
+          console.log('[] Postulación encontrada con datos completos:', fullPost);
           return fullPost;
         } catch (err) {
-          console.warn('[Details] Error al obtener datos completos de postulación:', err);
+          console.warn('[] Error al obtener datos completos de postulación:', err);
           return post; // Retornar datos básicos si falla
         }
       }
 
       return null;
     } catch (err) {
-      console.error('[Details] Error al obtener postulaciones con postulationService:', err);
+      console.error('[] Error al obtener postulaciones con postulationService:', err);
       return null;
     }
   };
@@ -384,8 +475,8 @@ export const AspirantDetailsPage = () => {
       updateLoadingState('sportsHistory', true);
       
       try {
-        console.log('[Details] Cargando historial deportivo para postulación:', activePostulation.id);
-        console.log('[Details] Postulación completa:', activePostulation);
+        console.log('[] Cargando historial deportivo para postulación:', activePostulation.id);
+        console.log('[] Postulación completa:', activePostulation);
         
         // Obtener documentos adjuntos relacionados a logros para enlazar certificados
         let docsByAchievement: Record<string, string> = {};
@@ -398,25 +489,25 @@ export const AspirantDetailsPage = () => {
               return acc;
             }, {});
         } catch (err) {
-          console.warn('[Details] No se pudieron cargar documentos adjuntos para logros:', err);
+          console.warn('[] No se pudieron cargar documentos adjuntos para logros:', err);
         }
 
         // Formatear historial deportivo a partir de postulation_sports y sus logros
         const formattedHistory: SportHistoryItem[] = [];
         const seenAch = new Set<string>();
 
-        console.log('[Details] Postulation sports:', activePostulation.postulation_sports);
+        console.log('[] Postulation sports:', activePostulation.postulation_sports);
 
         (activePostulation.postulation_sports || []).forEach((ps: any) => {
           if (!ps.postulation_sport_achievements || ps.postulation_sport_achievements.length === 0) {
-            console.log('[Details] No hay logros para deporte:', ps.sport?.name);
+            console.log('[] No hay logros para deporte:', ps.sport?.name);
             return;
           }
           
           const sportName = ps.sport?.name || '';
           const yearsExp = ps.experience_years ?? 0;
 
-          console.log('[Details] Procesando deporte:', sportName, 'con', ps.postulation_sport_achievements.length, 'logros');
+          console.log('[] Procesando deporte:', sportName, 'con', ps.postulation_sport_achievements.length, 'logros');
 
           (ps.postulation_sport_achievements || []).forEach((psa: any) => {
             const ach = psa.sports_achievement || {};
@@ -463,11 +554,11 @@ export const AspirantDetailsPage = () => {
           });
         });
 
-        console.log('[Details] Historial deportivo formateado:', formattedHistory);
+        console.log('[] Historial deportivo formateado:', formattedHistory);
         setSportsHistory(formattedHistory);
         historyLoadedRef.current.add(activePostulation.id);
       } catch (err) {
-        console.error('[Details] Error cargando historial deportivo:', err);
+        console.error('[] Error cargando historial deportivo:', err);
       } finally {
         updateLoadingState('sportsHistory', false);
       }
@@ -486,18 +577,18 @@ export const AspirantDetailsPage = () => {
       updateLoadingState('documents', true);
       
       try {
-        console.log('[Details] Cargando documentos adjuntos para postulación:', activePostulation.id);
+        console.log('[] Cargando documentos adjuntos para postulación:', activePostulation.id);
         
         // Si la postulación ya contiene los documentos, usarlos directamente
         let postulationDocs: any[] = activePostulation.attached_documents && activePostulation.attached_documents.length
           ? activePostulation.attached_documents
           : [];
 
-        console.log('[Details] Documentos en postulación:', postulationDocs);
+        console.log('[] Documentos en postulación:', postulationDocs);
 
         if (postulationDocs.length === 0) {
           // Fallback: obtener todos los documentos adjuntos y filtrar
-          console.log('[Details] No hay documentos en postulación, buscando en servicio...');
+          console.log('[] No hay documentos en postulación, buscando en servicio...');
           const allDocs = await attachedDocumentsService.getDocuments();
           
           postulationDocs = allDocs.filter(doc => 
@@ -505,7 +596,7 @@ export const AspirantDetailsPage = () => {
             doc.postulation_id === activePostulation.id ||
             (doc.reference_id === activePostulation.id && doc.reference_type === 'postulation')
           );
-          console.log('[Details] Documentos encontrados en servicio:', postulationDocs);
+          console.log('[] Documentos encontrados en servicio:', postulationDocs);
         }
 
         // Identificar documentos específicos por tipo
@@ -515,26 +606,61 @@ export const AspirantDetailsPage = () => {
           return base.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
         };
         
+        console.log('[] Buscando documentos entre:', postulationDocs.map(d => ({
+          id: d.id,
+          type: d.attachedDocumentType?.name || d.attached_document_type?.name || d.document_type?.name,
+          refType: d.reference_type,
+          refId: d.reference_id
+        })));
+        
         const medicalCert = postulationDocs.find(doc => {
-          const typeName = normalize(doc.attachedDocumentType?.name);
-          return typeName.includes('medic'); // coincide con "medico" o "médico"
+          const typeName = normalize(
+            doc.attachedDocumentType?.name || 
+            doc.attached_document_type?.name || 
+            doc.document_type?.name || 
+            ''
+          );
+          return typeName.includes('medic') || typeName.includes('certificado medico');
         });
 
         const consentForm = postulationDocs.find(doc => {
-          const typeName = normalize(doc.attachedDocumentType?.name);
-          return typeName.includes('consent'); // "Consentimiento Informado"
+          const typeName = normalize(
+            doc.attachedDocumentType?.name || 
+            doc.attached_document_type?.name || 
+            doc.document_type?.name || 
+            ''
+          );
+          return typeName.includes('consent') || typeName.includes('consentimiento');
         });
 
-        console.log('[Details] Certificado médico encontrado:', medicalCert);
-        console.log('[Details] Consentimiento informado encontrado:', consentForm);
+        console.log('[] Certificado médico encontrado:', medicalCert);
+        console.log('[] Consentimiento informado encontrado:', consentForm);
+
+        // Construir URL completa si es path relativo
+        const buildUrl = (doc: any, isMedicalOrConsent = false) => {
+          if (!doc) return undefined;
+          const path = doc.path || doc.file_path || doc.filePath;
+          if (!path) return undefined;
+          
+          // Si ya es una URL completa, retornarla
+          if (/^https?:\/\//.test(path)) return path;
+          
+          // Si es certificado médico o consentimiento informado, usar el prefijo específico
+          if (isMedicalOrConsent) {
+            return `https://api.tracksport.socratesunicordoba.co${path.startsWith('/') ? path : `/${path}`}`;
+          }
+          
+          // Si es un path relativo, construir URL completa
+          return `${uploadsBase}${path.startsWith('/') ? path.slice(1) : path}`;
+        };
 
         setAttachedDocs({
-          medicalCertificate: medicalCert ? { id: medicalCert.id, path: (medicalCert.path || medicalCert.file_path) } : undefined,
-          consentForm: consentForm ? { id: consentForm.id, path: (consentForm.path || consentForm.file_path) } : undefined,
+          medicalCertificate: medicalCert ? { id: medicalCert.id, path: buildUrl(medicalCert, true) || '' } : undefined,
+          consentForm: consentForm ? { id: consentForm.id, path: buildUrl(consentForm, true) || '' } : undefined,
         });
         docsLoadedRef.current.add(activePostulation.id);
       } catch (err) {
-        console.error('[Details] Error cargando documentos adjuntos:', err);
+        console.error('[] Error cargando documentos adjuntos:', err);
       } finally {
         updateLoadingState('documents', false);
       }
@@ -596,9 +722,10 @@ export const AspirantDetailsPage = () => {
     // Validaciones básicas
     if (!aspirant) return;
     
-    // Verificar que los datos morfológicos estén cargados
-    if (!morphologicalVariables.length || !weights.length) {
-      console.warn('Datos morfológicos no están listos');
+    // Verificar que las variables morfológicas estén cargadas
+    // Permitimos abrir aunque no existan weights; el modal valida con rangos básicos
+    if (!morphologicalVariables.length) {
+      console.warn('Variables morfológicas no están listas');
       return;
     }
     
@@ -672,33 +799,59 @@ export const AspirantDetailsPage = () => {
   const renderMeasurementsModal = () => {
     if (!isModalOpen || !aspirant) return null;
 
-    // Derivar valores iniciales de altura/peso según resultados existentes y variables
-    const heightVar = morphologicalVariables.find(v => 
-      v.name.toLowerCase().includes('height') || 
-      v.name.toLowerCase().includes('altura') || 
-      v.name.toLowerCase().includes('estatura') ||
-      v.name.toLowerCase().includes('talla')
-    );
-    const weightVar = morphologicalVariables.find(v => 
-      v.name.toLowerCase().includes('weight') || 
-      (v.name.toLowerCase().includes('peso') && !v.name.toLowerCase().includes('muscular'))
-    );
-    const heightResult = existingResults.find((r: any) => 
-      r.morphological_variable_id === heightVar?.id || r.morphological_variable?.id === heightVar?.id
-    );
-    const weightResult = existingResults.find((r: any) => 
-      r.morphological_variable_id === weightVar?.id || r.morphological_variable?.id === weightVar?.id
-    );
-    const initialHeight = heightResult?.result ?? '';
-    const initialWeight = weightResult?.result ?? '';
-
-    if (!morphologicalVariables.length || !weights.length) {
+    if (!morphologicalVariables.length) {
       return (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-[#006837]"></div>
         </div>
       );
     }
+
+    // Función auxiliar para encontrar resultado de una variable por nombre
+    const getResultByVariableName = (names: string[]) => {
+      const normalize = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      
+      // Buscar la variable morfológica
+      const variable = morphologicalVariables.find(v => {
+        const normalized = normalize(v.name);
+        return names.some(name => normalized.includes(normalize(name)));
+      });
+      
+      if (!variable) {
+        console.log(`[] Variable no encontrada para términos: ${names.join(', ')}`);
+        return undefined;
+      }
+      
+      // Buscar el resultado correspondiente
+      const result = existingResults.find((r: any) => {
+        const varId = r.morphological_variable_id || r.morphological_variable?.id;
+        return varId === variable.id;
+      });
+      
+      if (result) {
+        console.log(`[] Resultado encontrado para ${variable.name}:`, result.result);
+      } else {
+        console.log(`[] No hay resultado para ${variable.name}`);
+      }
+      
+      return result?.result;
+    };
+
+    // Construir objeto de datos iniciales con TODAS las variables
+    console.log('[] Prellenando datos con resultados existentes:', existingResults.length);
+    const initialData = {
+      estatura: getResultByVariableName(['estatura', 'altura', 'height', 'talla']),
+      pesoCorporal: getResultByVariableName(['peso corporal', 'peso']),
+      imc: getResultByVariableName(['imc', 'indice de masa', 'bmi']),
+      masaMuscular: getResultByVariableName(['masa muscular', 'muscle mass']),
+      masaGrasa: getResultByVariableName(['masa grasa', 'fat mass']),
+      grasaVisceral: getResultByVariableName(['grasa visceral', 'visceral fat']),
+      edadMetabolica: getResultByVariableName(['edad metabolica', 'edad metabólica', 'metabolic age']),
+      masaOsea: getResultByVariableName(['masa osea', 'masa ósea', 'bone mass']),
+      potenciaAerobica: getResultByVariableName(['potencia aerobica', 'potencia aeróbica', 'aerobica'])
+    };
+    
+    console.log('[] Datos iniciales construidos:', initialData);
 
     return (
       <React.Suspense fallback={<div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"><div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-[#006837]"></div></div>}>
@@ -709,8 +862,7 @@ export const AspirantDetailsPage = () => {
           onSubmit={handleMeasurementSubmit}
           variables={morphologicalVariables}
           weights={weights}
-          initialHeight={initialHeight}
-          initialWeight={initialWeight}
+          initialData={initialData}
         />
       </React.Suspense>
     );
@@ -1031,3 +1183,6 @@ export const AspirantDetailsPage = () => {
     </div>
   );
 };
+
+// Alias para rutas que importan como AspirantDetailsPage
+export const AspirantDetailsPage = AspirantPage;

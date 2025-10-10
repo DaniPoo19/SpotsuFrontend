@@ -1,4 +1,3 @@
-import axios from 'axios';
 import { AxiosError } from 'axios';
 import { Athlete } from '../types/auth.types';
 import API_ENDPOINTS from '../api/endpoints';
@@ -15,11 +14,12 @@ export interface PostulationDTO {
 }
 
 class AthletesService {
-  private readonly API_URL = `${import.meta.env.VITE_API_URL || '/api'}/athletes`;
+  // Usar rutas relativas; la baseURL se configura en la instancia api
+  private readonly API_URL = `/athletes`;
 
   async createAthlete(athleteData: any): Promise<Athlete> {
     try {
-      const response = await axios.post(this.API_URL, athleteData);
+      const response = await api.post(this.API_URL, athleteData);
       
       if (response.data.status === 'success') {
         return response.data.data;
@@ -32,7 +32,7 @@ class AthletesService {
   }
 
   async getAthletes(): Promise<Athlete[]> {
-    const response = await axios.get(this.API_URL);
+    const response = await api.get(this.API_URL);
     return response.data.data;
   }
 
@@ -51,7 +51,7 @@ class AthletesService {
       }
 
       // Obtener todos los atletas
-      const response = await axios.get(`${this.API_URL}`);
+      const response = await api.get(`${this.API_URL}`);
       
       if (response.data.status === 'success' && response.data.data) {
         // Buscar el atleta que coincida con el documento del usuario
@@ -75,7 +75,7 @@ class AthletesService {
 
   async getAthleteByPersonId(personId: string): Promise<Athlete | null> {
     try {
-      const response = await axios.get(`${this.API_URL}/person/${personId}`);
+      const response = await api.get(`${this.API_URL}/person/${personId}`);
       return response.data.data;
     } catch (error) {
       if (error instanceof AxiosError && error.response?.status === 404) {
@@ -86,17 +86,17 @@ class AthletesService {
   }
 
   async updateAthlete(id: string, data: any): Promise<Athlete> {
-    const response = await axios.patch(`${this.API_URL}/${id}`, data);
+    const response = await api.patch(`${this.API_URL}/${id}`, data);
     return response.data.data;
   }
 
   async deleteAthlete(id: string): Promise<void> {
-    await axios.delete(`${this.API_URL}/${id}`);
+    await api.delete(`${this.API_URL}/${id}`);
   }
 
   async createPostulation(athleteId: string): Promise<any> {
     try {
-      const response = await axios.post(`${this.API_URL}/${athleteId}/postulations`);
+      const response = await api.post(`${this.API_URL}/${athleteId}/postulations`);
       if (response.data.status === 'success') {
         return response.data.data;
       }

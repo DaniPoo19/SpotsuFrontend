@@ -13,7 +13,7 @@ export interface DocumentType {
 export const documentTypesService = {
   async getDocumentTypes(): Promise<DocumentType[]> {
     try {
-      const response = await api.get<ApiResponse<DocumentType[]>>('/attached-document-types');
+      const response = await api.get<ApiResponse<DocumentType[]>>('/document-types');
       return response.data.data;
     } catch (error) {
       console.error('Error al obtener tipos de documentos:', error);
@@ -23,7 +23,7 @@ export const documentTypesService = {
 
   async getDocumentType(id: string): Promise<DocumentType> {
     try {
-      const response = await api.get<ApiResponse<DocumentType>>(`/attached-document-types/${id}`);
+      const response = await api.get<ApiResponse<DocumentType>>(`/document-types/${id}`);
       return response.data.data;
     } catch (error) {
       console.error('Error al obtener tipo de documento:', error);

@@ -195,7 +195,7 @@ export const SportsHistoryManagementPage = () => {
 
   // Descargar certificado
   const handleDownloadCertificate = useCallback((certificateUrl: string) => {
-    const uploadBase = `${import.meta.env.VITE_API_URL || ''}/uploads/`;
+    const uploadBase = `${import.meta.env.VITE_API_URL || '/api'}/uploads/`;
     const fileUrl = certificateUrl.startsWith('http') 
       ? certificateUrl 
       : `${uploadBase}${certificateUrl}`;

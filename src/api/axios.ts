@@ -3,9 +3,8 @@ import { toast } from 'react-hot-toast';
 
 // Configuración de la API
 const API_CONFIG = {
-  // Nueva URL base del backend desplegado
-  BASE_URL: import.meta.env.VITE_API_URL || '/api',
-  // Ya no necesitamos prefijo porque la base incluye /api
+  // Usar proxy de Vite para evitar problemas de CORS
+  BASE_URL: '/api',
   API_PREFIX: ''
 } as const;
 
@@ -26,9 +25,10 @@ axiosInstance.interceptors.request.use(
     }
 
     // No añadir token para login o registro
+    const urlPath = config.url || '';
     if (
-      !config.url.includes('/auth/login') &&
-      !config.url.includes('/auth/register')
+      !urlPath.includes('/auth/login') &&
+      !urlPath.includes('/auth/register')
     ) {
       const token = localStorage.getItem('auth_token');
       if (token) {

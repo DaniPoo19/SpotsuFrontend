@@ -28,13 +28,20 @@ export interface VariableResultPayload {
   result: number;
 }
 
+export interface ExistingVariableResult {
+  id: string;
+  result: number;
+  morphological_variable_id?: string;
+  morphological_variable?: { id: string };
+}
+
 export const morphologicalService = {
   async getVariables(): Promise<MorphologicalVariable[]> {
     const resp = await api.get('/morphological-variables');
     return resp.data.data;
   },
 
-  async getVariableResults(postulationId: string): Promise<VariableResultPayload[]> {
+  async getVariableResults(postulationId: string): Promise<ExistingVariableResult[]> {
     const { data } = await api.get(`/morphological-variable-results`, {
       params: { postulation_id: postulationId },
     });
@@ -59,6 +66,11 @@ export const morphologicalService = {
       variables: [variable],
     });
     return resp.data.data;
+  },
+
+  async updateVariableResult(id: string, result: number) {
+    const resp = await api.patch(`/morphological-variable-results/${id}`, { result });
+    return resp.data?.data ?? resp.data;
   },
 
   /**

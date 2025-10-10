@@ -1,7 +1,6 @@
-import React, { memo, useState, useEffect, useCallback } from 'react';
+import React, { memo, useState, useEffect, useCallback, useMemo } from 'react';
 import { 
   Ruler, 
-  CheckCircle, 
   XCircle,
   Scale,
   Activity,
@@ -10,7 +9,13 @@ import {
   Calculator,
   Save,
   User,
-  AlertTriangle
+  AlertTriangle,
+  Heart,
+  Bone,
+  Droplet,
+  Zap,
+  TrendingUp,
+  Info
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -31,15 +36,26 @@ interface MorphologicalVariablesWeight {
   score: number;
 }
 
+export interface MeasurementData {
+  estatura: number;
+  pesoCorporal: number;
+  imc: number;
+  masaMuscular: number;
+  masaGrasa: number;
+  grasaVisceral: number;
+  edadMetabolica: number;
+  masaOsea: number;
+  potenciaAerobica: number;
+}
+
 export interface MeasurementsModalProps {
   isOpen: boolean;
   onClose: () => void;
   aspirant: any;
-  onSubmit: (data: { height: number; weight: number; bmi: number }) => Promise<void>;
+  onSubmit: (data: MeasurementData) => Promise<void>;
   variables: MorphologicalVariable[];
   weights: MorphologicalVariablesWeight[];
-  initialHeight?: number | string;
-  initialWeight?: number | string;
+  initialData?: Partial<MeasurementData>;
 }
 
 export const MeasurementsModal = memo(({ 
@@ -49,148 +65,113 @@ export const MeasurementsModal = memo(({
   onSubmit,
   variables,
   weights,
-  initialHeight,
-  initialWeight
+  initialData
 }: MeasurementsModalProps) => {
-  const [height, setHeight] = useState<string>(initialHeight ? String(initialHeight) : '');
-  const [weight, setWeight] = useState<string>(initialWeight ? String(initialWeight) : '');
+  // Estados para variables de INGRESO MANUAL
+  const [estatura, setEstatura] = useState<string>(initialData?.estatura ? String(initialData.estatura) : '');
+  const [pesoCorporal, setPesoCorporal] = useState<string>(initialData?.pesoCorporal ? String(initialData.pesoCorporal) : '');
+  const [potenciaAerobica, setPotenciaAerobica] = useState<string>(initialData?.potenciaAerobica ? String(initialData.potenciaAerobica) : '');
+  
+  // Estados para variables CALCULADAS (desde bioimpedancia)
+  const [masaMuscular, setMasaMuscular] = useState<string>(initialData?.masaMuscular ? String(initialData.masaMuscular) : '');
+  const [grasaVisceral, setGrasaVisceral] = useState<string>(initialData?.grasaVisceral ? String(initialData.grasaVisceral) : '');
+  const [masaOsea, setMasaOsea] = useState<string>(initialData?.masaOsea ? String(initialData.masaOsea) : '');
+  const [edadMetabolica, setEdadMetabolica] = useState<string>(initialData?.edadMetabolica ? String(initialData.edadMetabolica) : '');
+  
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [errors, setErrors] = useState<{ height?: string; weight?: string }>({});
-  const [showPreview, setShowPreview] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [showCalculated, setShowCalculated] = useState(false);
 
-  // Buscar variables específicas
-  const heightVar = variables.find(v => 
-    v.name.toLowerCase().includes('height') || 
-    v.name.toLowerCase().includes('altura') || 
-    v.name.toLowerCase().includes('estatura') ||
-    v.name.toLowerCase().includes('talla')
-  );
+  // ============ CÁLCULOS AUTOMÁTICOS ============
   
-  const weightVar = variables.find(v => 
-    v.name.toLowerCase().includes('weight') || 
-    (v.name.toLowerCase().includes('peso') && !v.name.toLowerCase().includes('muscular'))
-  );
-  
-  const bmiVar = variables.find(v => 
-    v.name.toLowerCase().includes('imc') || 
-    v.name.toLowerCase().includes('bmi') ||
-    v.name.toLowerCase().includes('índice')
-  );
-
-  // Calcular IMC automáticamente
+  // 1. Calcular IMC automáticamente
   const calculateBMI = useCallback((heightCm: number, weightKg: number): number => {
     if (heightCm <= 0 || weightKg <= 0) return 0;
     const heightM = heightCm / 100;
     return parseFloat((weightKg / (heightM * heightM)).toFixed(2));
   }, []);
 
-  const bmi = calculateBMI(parseFloat(height) || 0, parseFloat(weight) || 0);
+  const imc = calculateBMI(parseFloat(estatura) || 0, parseFloat(pesoCorporal) || 0);
 
-  // Validar rangos según los pesos morfológicos
-  const validateMeasurement = useCallback((variable: MorphologicalVariable | undefined, value: number) => {
-    // Si no hay variable o aspirante, permitir valores básicos válidos
-    if (!variable || !aspirant) {
-      // Validaciones básicas: altura entre 100-250 cm, peso entre 30-200 kg
-      const isValid = variable ? 
-        (variable.name.toLowerCase().includes('height') || variable.name.toLowerCase().includes('altura')) ? 
-          value >= 100 && value <= 250 :
-          (variable.name.toLowerCase().includes('weight') || variable.name.toLowerCase().includes('peso')) ?
-            value >= 30 && value <= 200 : true
-        : true;
-      
-      return { isValid, score: 0, range: null };
+  // 2. Calcular Masa Grasa automáticamente (Peso - Masa Muscular)
+  const masaGrasa = useMemo(() => {
+    const peso = parseFloat(pesoCorporal) || 0;
+    const muscular = parseFloat(masaMuscular) || 0;
+    if (peso > 0 && muscular > 0 && muscular < peso) {
+      return parseFloat((peso - muscular).toFixed(2));
     }
+    return 0;
+  }, [pesoCorporal, masaMuscular]);
 
-    // Filtrar weights válidos antes de aplicar la lógica de validación
-    const validWeights = weights.filter(w => 
-      w && 
-      w.morphological_variable && 
-      w.gender && 
-      w.sport
-    );
-
-    // Si no hay weights configurados, usar validaciones básicas
-    if (validWeights.length === 0) {
-      const isValid = (variable.name.toLowerCase().includes('height') || variable.name.toLowerCase().includes('altura')) ? 
-        value >= 100 && value <= 250 :
-        (variable.name.toLowerCase().includes('weight') || variable.name.toLowerCase().includes('peso')) ?
-          value >= 30 && value <= 200 : true;
-      
-      return { isValid, score: 0, range: null };
-    }
-
-    const applicableWeights = validWeights.filter(w => 
-      w.morphological_variable?.id === variable.id &&
-      w.gender?.name?.toLowerCase().startsWith((aspirant.gender || '').charAt(0).toLowerCase()) &&
-      (!aspirant.discipline || w.sport?.name?.toLowerCase() === aspirant.discipline.toLowerCase())
-    );
-
-    // Si no hay weights aplicables, usar validaciones básicas
-    if (applicableWeights.length === 0) {
-      const isValid = (variable.name.toLowerCase().includes('height') || variable.name.toLowerCase().includes('altura')) ? 
-        value >= 100 && value <= 250 :
-        (variable.name.toLowerCase().includes('weight') || variable.name.toLowerCase().includes('peso')) ?
-          value >= 30 && value <= 200 : true;
-      
-      return { isValid, score: 0, range: null };
-    }
-
-    // Buscar el rango que contiene el valor
-    const matchingWeight = applicableWeights.find(w => 
-      value >= w.min_value && value <= w.max_value
-    );
-
-    if (matchingWeight) {
-      return {
-        isValid: true,
-        score: matchingWeight.score,
-        range: { min: matchingWeight.min_value, max: matchingWeight.max_value }
-      };
-    }
-
-    // Si no está en ningún rango, mostrar información pero permitir el valor
-    const allRanges = applicableWeights.map(w => ({ min: w.min_value, max: w.max_value, score: w.score }));
-    return {
-      isValid: true, // Cambiar a true para permitir valores fuera del rango
-      score: 0,
-      range: allRanges.length > 0 ? allRanges[0] : null
-    };
-  }, [weights, aspirant]);
-
-  const heightValidation = validateMeasurement(heightVar, parseFloat(height) || 0);
-  const weightValidation = validateMeasurement(weightVar, parseFloat(weight) || 0);
-  // Validación de BMI solo para estado visual, no se muestran puntuaciones
-
-  // Sincronizar una sola vez con valores iniciales para evitar parpadeos
+  // Efecto para mostrar sección calculada cuando hay datos básicos
   useEffect(() => {
-    if (initialHeight !== undefined && initialHeight !== null) {
-      setHeight(String(initialHeight));
+    if (estatura && pesoCorporal) {
+      setShowCalculated(true);
     }
-    if (initialWeight !== undefined && initialWeight !== null) {
-      setWeight(String(initialWeight));
+  }, [estatura, pesoCorporal]);
+
+  // Sincronizar con valores iniciales
+  useEffect(() => {
+    if (initialData) {
+      if (initialData.estatura !== undefined) setEstatura(String(initialData.estatura));
+      if (initialData.pesoCorporal !== undefined) setPesoCorporal(String(initialData.pesoCorporal));
+      if (initialData.potenciaAerobica !== undefined) setPotenciaAerobica(String(initialData.potenciaAerobica));
+      if (initialData.masaMuscular !== undefined) setMasaMuscular(String(initialData.masaMuscular));
+      if (initialData.grasaVisceral !== undefined) setGrasaVisceral(String(initialData.grasaVisceral));
+      if (initialData.masaOsea !== undefined) setMasaOsea(String(initialData.masaOsea));
+      if (initialData.edadMetabolica !== undefined) setEdadMetabolica(String(initialData.edadMetabolica));
     }
-    // solo en el primer render
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [initialData]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    const heightNum = parseFloat(height);
-    const weightNum = parseFloat(weight);
-    const newErrors: { height?: string; weight?: string } = {};
+    const estaturaNum = parseFloat(estatura);
+    const pesoCorporalNum = parseFloat(pesoCorporal);
+    const masaMuscularNum = parseFloat(masaMuscular);
+    const grasaVisceralNum = parseFloat(grasaVisceral);
+    const edadMetabolicaNum = parseFloat(edadMetabolica);
+    const masaOseaNum = parseFloat(masaOsea);
+    const potenciaAerobicaNum = parseFloat(potenciaAerobica);
 
-    // Validaciones
-    if (!heightNum || heightNum <= 0) {
-      newErrors.height = 'La estatura debe ser un número positivo';
-    } else if (!heightValidation.isValid) {
-      newErrors.height = `La estatura debe estar en el rango permitido`;
+    const newErrors: Record<string, string> = {};
+
+    // Validaciones - INGRESO MANUAL
+    if (!estaturaNum || estaturaNum <= 0) {
+      newErrors.estatura = 'La estatura es obligatoria';
+    } else if (estaturaNum < 100 || estaturaNum > 250) {
+      newErrors.estatura = 'La estatura debe estar entre 100 y 250 cm';
     }
 
-    if (!weightNum || weightNum <= 0) {
-      newErrors.weight = 'El peso debe ser un número positivo';
-    } else if (!weightValidation.isValid) {
-      newErrors.weight = `El peso debe estar en el rango permitido`;
+    if (!pesoCorporalNum || pesoCorporalNum <= 0) {
+      newErrors.pesoCorporal = 'El peso corporal es obligatorio';
+    } else if (pesoCorporalNum < 30 || pesoCorporalNum > 200) {
+      newErrors.pesoCorporal = 'El peso debe estar entre 30 y 200 kg';
+    }
+
+    if (!potenciaAerobicaNum || potenciaAerobicaNum <= 0) {
+      newErrors.potenciaAerobica = 'La Potencia Aeróbica es obligatoria';
+    } else if (potenciaAerobicaNum < 10 || potenciaAerobicaNum > 100) {
+      newErrors.potenciaAerobica = 'El VO₂máx debe estar entre 10 y 100 ml/kg/min';
+    }
+
+    // Validaciones - DATOS DE BIOIMPEDANCIA
+    if (!masaMuscularNum || masaMuscularNum <= 0) {
+      newErrors.masaMuscular = 'Ingrese el valor de bioimpedancia';
+    } else if (masaMuscularNum >= pesoCorporalNum) {
+      newErrors.masaMuscular = 'La masa muscular debe ser menor al peso total';
+    }
+
+    if (!grasaVisceralNum || grasaVisceralNum < 0) {
+      newErrors.grasaVisceral = 'Ingrese el valor del dispositivo';
+    }
+
+    if (!masaOseaNum || masaOseaNum <= 0) {
+      newErrors.masaOsea = 'Ingrese el valor estimado';
+    }
+
+    if (!edadMetabolicaNum || edadMetabolicaNum <= 0) {
+      newErrors.edadMetabolica = 'Ingrese la edad metabólica calculada';
     }
 
     if (Object.keys(newErrors).length > 0) {
@@ -203,9 +184,15 @@ export const MeasurementsModal = memo(({
       setErrors({});
       
       await onSubmit({
-        height: heightNum,
-        weight: weightNum,
-        bmi: bmi
+        estatura: estaturaNum,
+        pesoCorporal: pesoCorporalNum,
+        imc: imc,
+        masaMuscular: masaMuscularNum,
+        masaGrasa: masaGrasa,
+        grasaVisceral: grasaVisceralNum,
+        edadMetabolica: edadMetabolicaNum,
+        masaOsea: masaOseaNum,
+        potenciaAerobica: potenciaAerobicaNum
       });
       
       onClose();
@@ -223,7 +210,7 @@ export const MeasurementsModal = memo(({
     return { label: 'Obesidad', color: 'text-red-600 bg-red-50 border-red-200' };
   };
 
-  const bmiStatus = getBMIStatus(bmi);
+  const bmiStatus = getBMIStatus(imc);
 
   if (!isOpen) return null;
 
@@ -234,208 +221,448 @@ export const MeasurementsModal = memo(({
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50"
+        onClick={(e) => e.target === e.currentTarget && onClose()}
       >
         <motion.div
           initial={{ opacity: 0, scale: 0.95, y: 20 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 20 }}
-          className="bg-white rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden shadow-2xl"
+          transition={{ type: "spring", duration: 0.5 }}
+          className="bg-white rounded-3xl w-full max-w-6xl max-h-[90vh] overflow-hidden shadow-2xl"
         >
-          {/* Header */}
+          {/* Header con gradiente */}
           <div className="bg-gradient-to-r from-[#006837] to-[#00a65a] text-white p-8">
             <div className="flex justify-between items-start">
-              <div>
+              <motion.div
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.2 }}
+              >
                 <h2 className="text-3xl font-bold flex items-center gap-3 mb-2">
-                  <div className="p-2 bg-white/20 rounded-xl">
+                  <div className="p-2 bg-white/20 rounded-xl backdrop-blur-sm">
                     <Ruler className="w-6 h-6" />
                   </div>
-                  Registro de Medidas Antropométricas
+                  Variables Morfológicas
                 </h2>
                 <p className="text-white/90 text-lg">
                   {aspirant?.personalInfo?.firstName} {aspirant?.personalInfo?.lastName}
                 </p>
                 <div className="flex items-center gap-4 mt-2 text-sm text-white/80">
-                  <span className="flex items-center gap-1">
+                  <span className="flex items-center gap-1 bg-white/10 px-3 py-1 rounded-full">
                     <User className="w-4 h-4" />
                     {aspirant?.gender}
                   </span>
-                  <span className="flex items-center gap-1">
+                  <span className="flex items-center gap-1 bg-white/10 px-3 py-1 rounded-full">
                     <Activity className="w-4 h-4" />
                     {aspirant?.discipline}
                   </span>
                 </div>
-              </div>
-              <button
+              </motion.div>
+              <motion.button
+                whileHover={{ scale: 1.1, rotate: 90 }}
+                whileTap={{ scale: 0.9 }}
                 onClick={onClose}
                 className="text-white/80 hover:text-white transition-colors p-2 hover:bg-white/10 rounded-lg"
               >
                 <XCircle size={24} />
-              </button>
+              </motion.button>
             </div>
           </div>
 
-          <form onSubmit={handleSubmit} className="p-8 space-y-8 overflow-y-auto max-h-[calc(90vh-200px)]">
-            {/* Medidas Principales */}
-            <div className="grid md:grid-cols-2 gap-6">
-              {/* Estatura */}
-              <motion.div
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.1 }}
-                className="space-y-3"
-              >
-                <label className="flex items-center gap-3" htmlFor="height">
-                  <div className="p-2 bg-[#006837]/10 rounded-xl">
-                    <ArrowUp className="w-5 h-5 text-[#006837]" />
-                  </div>
-                  <div>
-                    <span className="text-lg font-semibold text-gray-800">Estatura</span>
-                    <p className="text-sm text-gray-500">Medida en centímetros</p>
-                  </div>
-                </label>
-                <div className="relative">
-                  <input
-                    type="number"
-                    step="0.1"
-                    id="height"
-                    name="height"
-                    value={height}
-                    onChange={(e) => setHeight(e.target.value)}
-                    className={`w-full px-4 py-4 text-lg border-2 rounded-xl focus:ring-4 focus:ring-[#006837]/20 focus:border-[#006837] transition-all ${
-                      errors.height 
-                        ? 'border-red-500 bg-red-50' 
-                        : heightValidation.isValid && height 
-                          ? 'border-green-500 bg-green-50' 
-                          : 'border-gray-300'
-                    }`}
-                    placeholder="Ej: 175.5"
-                  />
-                  <div className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 font-medium">
-                    cm
-                  </div>
+          <form onSubmit={handleSubmit} className="p-8 space-y-8 overflow-y-auto max-h-[calc(90vh-250px)]">
+            
+            {/* SECCIÓN 1: MEDIDAS BÁSICAS (Manual) */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.1 }}
+            >
+              <div className="flex items-center gap-3 mb-6">
+                <div className="p-3 bg-[#006837]/10 rounded-xl">
+                  <Scale className="w-6 h-6 text-[#006837]" />
                 </div>
-                {errors.height && (
-                  <p className="text-red-600 text-sm flex items-center gap-2">
-                    <AlertTriangle className="w-4 h-4" />
-                    {errors.height}
-                  </p>
-                )}
-                {height && heightValidation.range && (
-                  <div className={`p-3 rounded-lg border ${heightValidation.isValid ? 'bg-green-50 border-green-200' : 'bg-yellow-50 border-yellow-200'}`}>
-                    <p className="text-sm font-medium">
-                      Rango permitido: {heightValidation.range.min} - {heightValidation.range.max} cm
-                    </p>
-                  </div>
-                )}
-              </motion.div>
-
-              {/* Peso */}
-              <motion.div
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.2 }}
-                className="space-y-3"
-              >
-                <label className="flex items-center gap-3" htmlFor="weight">
-                  <div className="p-2 bg-[#006837]/10 rounded-xl">
-                    <Weight className="w-5 h-5 text-[#006837]" />
-                  </div>
-                  <div>
-                    <span className="text-lg font-semibold text-gray-800">Peso</span>
-                    <p className="text-sm text-gray-500">Medida en kilogramos</p>
-                  </div>
-                </label>
-                <div className="relative">
-                  <input
-                    type="number"
-                    step="0.1"
-                    id="weight"
-                    name="weight"
-                    value={weight}
-                    onChange={(e) => setWeight(e.target.value)}
-                    className={`w-full px-4 py-4 text-lg border-2 rounded-xl focus:ring-4 focus:ring-[#006837]/20 focus:border-[#006837] transition-all ${
-                      errors.weight 
-                        ? 'border-red-500 bg-red-50' 
-                        : weightValidation.isValid && weight 
-                          ? 'border-green-500 bg-green-50' 
-                          : 'border-gray-300'
-                    }`}
-                    placeholder="Ej: 70.5"
-                  />
-                  <div className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 font-medium">
-                    kg
-                  </div>
+                <div>
+                  <h3 className="text-xl font-bold text-gray-800">Medidas Antropométricas Básicas</h3>
+                  <p className="text-sm text-gray-500">Valores medidos directamente</p>
                 </div>
-                {errors.weight && (
-                  <p className="text-red-600 text-sm flex items-center gap-2">
-                    <AlertTriangle className="w-4 h-4" />
-                    {errors.weight}
-                  </p>
-                )}
-                {weight && weightValidation.range && (
-                  <div className={`p-3 rounded-lg border ${weightValidation.isValid ? 'bg-green-50 border-green-200' : 'bg-yellow-50 border-yellow-200'}`}>
-                    <p className="text-sm font-medium">
-                      Rango permitido: {weightValidation.range.min} - {weightValidation.range.max} kg
-                    </p>
-                  </div>
-                )}
-              </motion.div>
-            </div>
+              </div>
 
-            {/* Cálculo Automático del IMC */}
-            {height && weight && (
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.3 }}
-                className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl p-6 border border-blue-200"
-              >
-                <div className="flex items-center justify-between mb-4">
+              <div className="grid md:grid-cols-3 gap-6">
+                {/* Estatura */}
+                <motion.div
+                  whileHover={{ scale: 1.02 }}
+                  className="space-y-3"
+                >
+                  <label className="flex items-center gap-2 text-sm font-semibold text-gray-700" htmlFor="estatura">
+                    <ArrowUp className="w-4 h-4 text-[#006837]" />
+                    Estatura
+                  </label>
+                  <div className="relative group">
+                    <input
+                      type="number"
+                      step="0.1"
+                      id="estatura"
+                      value={estatura}
+                      onChange={(e) => setEstatura(e.target.value)}
+                      className={`w-full px-4 py-3 pr-12 text-lg border-2 rounded-xl focus:ring-4 focus:ring-[#006837]/20 focus:border-[#006837] transition-all ${
+                        errors.estatura 
+                          ? 'border-red-500 bg-red-50' 
+                          : estatura 
+                            ? 'border-green-500 bg-green-50/50' 
+                            : 'border-gray-300 hover:border-gray-400'
+                      }`}
+                      placeholder="175.5"
+                    />
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 font-medium text-sm">
+                      cm
+                    </div>
+                  </div>
+                  {errors.estatura && (
+                    <motion.p
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      className="text-red-600 text-sm flex items-center gap-2"
+                    >
+                      <AlertTriangle className="w-4 h-4" />
+                      {errors.estatura}
+                    </motion.p>
+                  )}
+                </motion.div>
+
+                {/* Peso Corporal */}
+                <motion.div
+                  whileHover={{ scale: 1.02 }}
+                  className="space-y-3"
+                >
+                  <label className="flex items-center gap-2 text-sm font-semibold text-gray-700" htmlFor="pesoCorporal">
+                    <Weight className="w-4 h-4 text-[#006837]" />
+                    Peso Corporal
+                  </label>
+                  <div className="relative group">
+                    <input
+                      type="number"
+                      step="0.1"
+                      id="pesoCorporal"
+                      value={pesoCorporal}
+                      onChange={(e) => setPesoCorporal(e.target.value)}
+                      className={`w-full px-4 py-3 pr-12 text-lg border-2 rounded-xl focus:ring-4 focus:ring-[#006837]/20 focus:border-[#006837] transition-all ${
+                        errors.pesoCorporal 
+                          ? 'border-red-500 bg-red-50' 
+                          : pesoCorporal 
+                            ? 'border-green-500 bg-green-50/50' 
+                            : 'border-gray-300 hover:border-gray-400'
+                      }`}
+                      placeholder="70.5"
+                    />
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 font-medium text-sm">
+                      kg
+                    </div>
+                  </div>
+                  {errors.pesoCorporal && (
+                    <motion.p
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      className="text-red-600 text-sm flex items-center gap-2"
+                    >
+                      <AlertTriangle className="w-4 h-4" />
+                      {errors.pesoCorporal}
+                    </motion.p>
+                  )}
+                </motion.div>
+
+                {/* Potencia Aeróbica */}
+                <motion.div
+                  whileHover={{ scale: 1.02 }}
+                  className="space-y-3"
+                >
+                  <label className="flex items-center gap-2 text-sm font-semibold text-gray-700" htmlFor="potenciaAerobica">
+                    <TrendingUp className="w-4 h-4 text-[#006837]" />
+                    Potencia Aeróbica (VO₂máx)
+                  </label>
+                  <div className="relative group">
+                    <input
+                      type="number"
+                      step="0.1"
+                      id="potenciaAerobica"
+                      value={potenciaAerobica}
+                      onChange={(e) => setPotenciaAerobica(e.target.value)}
+                      className={`w-full px-4 py-3 pr-16 text-lg border-2 rounded-xl focus:ring-4 focus:ring-[#006837]/20 focus:border-[#006837] transition-all ${
+                        errors.potenciaAerobica 
+                          ? 'border-red-500 bg-red-50' 
+                          : potenciaAerobica 
+                            ? 'border-green-500 bg-green-50/50' 
+                            : 'border-gray-300 hover:border-gray-400'
+                      }`}
+                      placeholder="45.5"
+                    />
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 font-medium text-sm">
+                      ml/kg/min
+                    </div>
+                  </div>
+                  {errors.potenciaAerobica && (
+                    <motion.p
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      className="text-red-600 text-sm flex items-center gap-2"
+                    >
+                      <AlertTriangle className="w-4 h-4" />
+                      {errors.potenciaAerobica}
+                    </motion.p>
+                  )}
+                </motion.div>
+              </div>
+            </motion.div>
+
+            {/* IMC Calculado Automáticamente */}
+            <AnimatePresence>
+              {estatura && pesoCorporal && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                  className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl p-6 border-2 border-blue-200"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <motion.div
+                        animate={{ rotate: [0, 360] }}
+                        transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+                        className="p-3 bg-blue-100 rounded-xl"
+                      >
+                        <Calculator className="w-6 h-6 text-blue-600" />
+                      </motion.div>
+                      <div>
+                        <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                          IMC (Calculado)
+                          <span className="text-xs bg-blue-200 text-blue-700 px-2 py-1 rounded-full">Automático</span>
+                        </h3>
+                        <p className="text-sm text-gray-600">Índice de Masa Corporal</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <motion.div
+                        key={imc}
+                        initial={{ scale: 1.2 }}
+                        animate={{ scale: 1 }}
+                        className="text-4xl font-bold text-blue-600"
+                      >
+                        {imc.toFixed(2)}
+                      </motion.div>
+                      <div className="text-sm text-gray-500 font-medium">kg/m²</div>
+                    </div>
+                  </div>
+                  <div className="mt-4">
+                    <div className={`inline-flex px-4 py-2 rounded-full border-2 font-semibold ${bmiStatus.color}`}>
+                      {bmiStatus.label}
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* SECCIÓN 2: COMPOSICIÓN CORPORAL (Bioimpedancia) */}
+            <AnimatePresence>
+              {showCalculated && (
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.3 }}
+                  className="space-y-6"
+                >
                   <div className="flex items-center gap-3">
-                    <div className="p-3 bg-blue-100 rounded-xl">
-                      <Calculator className="w-6 h-6 text-blue-600" />
+                    <div className="p-3 bg-purple-100 rounded-xl">
+                      <Zap className="w-6 h-6 text-purple-600" />
                     </div>
                     <div>
-                      <h3 className="text-xl font-bold text-gray-800">Índice de Masa Corporal (IMC)</h3>
-                      <p className="text-gray-600">Calculado automáticamente</p>
+                      <h3 className="text-xl font-bold text-gray-800">Análisis de Bioimpedancia</h3>
+                      <p className="text-sm text-gray-500">Valores obtenidos del equipo de bioimpedancia eléctrica</p>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <div className="text-4xl font-bold text-blue-600">{bmi.toFixed(2)}</div>
-                    <div className="text-sm text-gray-500 font-medium">kg/m²</div>
-                  </div>
-                </div>
 
-                <div className="flex items-center justify-between">
-                  <div className={`px-4 py-2 rounded-full border font-medium ${bmiStatus.color}`}>
-                    {bmiStatus.label}
+                  <div className="bg-purple-50/50 rounded-2xl p-6 border border-purple-200">
+                    <div className="grid md:grid-cols-2 gap-6">
+                      {/* Masa Muscular */}
+                      <motion.div whileHover={{ scale: 1.02 }} className="space-y-3">
+                        <label className="flex items-center gap-2 text-sm font-semibold text-gray-700" htmlFor="masaMuscular">
+                          <Activity className="w-4 h-4 text-purple-600" />
+                          Masa Muscular
+                          <span className="text-xs bg-purple-200 text-purple-700 px-2 py-0.5 rounded-full ml-auto">Del equipo</span>
+                        </label>
+                        <div className="relative">
+                          <input
+                            type="number"
+                            step="0.1"
+                            id="masaMuscular"
+                            value={masaMuscular}
+                            onChange={(e) => setMasaMuscular(e.target.value)}
+                            className={`w-full px-4 py-3 pr-12 text-lg border-2 rounded-xl focus:ring-4 focus:ring-purple-600/20 focus:border-purple-600 transition-all ${
+                              errors.masaMuscular ? 'border-red-500 bg-red-50' : masaMuscular ? 'border-purple-500 bg-purple-50/50' : 'border-gray-300'
+                            }`}
+                            placeholder="35.2"
+                          />
+                          <div className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 font-medium text-sm">kg</div>
+                        </div>
+                        {errors.masaMuscular && (
+                          <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-red-600 text-sm flex items-center gap-2">
+                            <AlertTriangle className="w-4 h-4" />
+                            {errors.masaMuscular}
+                          </motion.p>
+                        )}
+                      </motion.div>
+
+                      {/* Masa Grasa (Calculada) */}
+                      <div className="space-y-3">
+                        <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                          <Droplet className="w-4 h-4 text-orange-600" />
+                          Masa Grasa
+                          <span className="text-xs bg-orange-200 text-orange-700 px-2 py-0.5 rounded-full ml-auto">Calculada</span>
+                        </label>
+                        <div className="relative">
+                          <input
+                            type="number"
+                            value={masaGrasa || ''}
+                            disabled
+                            className="w-full px-4 py-3 text-lg border-2 rounded-xl bg-orange-50/50 border-orange-300 text-gray-700 cursor-not-allowed"
+                            placeholder="Automático"
+                          />
+                          <div className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 font-medium text-sm">kg</div>
+                        </div>
+                        <p className="text-xs text-gray-500 flex items-center gap-1">
+                          <Info className="w-3 h-3" />
+                          Peso Corporal - Masa Muscular
+                        </p>
+                      </div>
+
+                      {/* Grasa Visceral */}
+                      <motion.div whileHover={{ scale: 1.02 }} className="space-y-3">
+                        <label className="flex items-center gap-2 text-sm font-semibold text-gray-700" htmlFor="grasaVisceral">
+                          <Heart className="w-4 h-4 text-red-600" />
+                          Grasa Visceral
+                          <span className="text-xs bg-red-200 text-red-700 px-2 py-0.5 rounded-full ml-auto">Del equipo</span>
+                        </label>
+                        <div className="relative">
+                          <input
+                            type="number"
+                            step="1"
+                            id="grasaVisceral"
+                            value={grasaVisceral}
+                            onChange={(e) => setGrasaVisceral(e.target.value)}
+                            className={`w-full px-4 py-3 pr-16 text-lg border-2 rounded-xl focus:ring-4 focus:ring-red-600/20 focus:border-red-600 transition-all ${
+                              errors.grasaVisceral ? 'border-red-500 bg-red-50' : grasaVisceral ? 'border-red-500 bg-red-50/50' : 'border-gray-300'
+                            }`}
+                            placeholder="8"
+                          />
+                          <div className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 font-medium text-sm">Score</div>
+                        </div>
+                        {errors.grasaVisceral && (
+                          <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-red-600 text-sm flex items-center gap-2">
+                            <AlertTriangle className="w-4 h-4" />
+                            {errors.grasaVisceral}
+                          </motion.p>
+                        )}
+                      </motion.div>
+
+                      {/* Masa Ósea */}
+                      <motion.div whileHover={{ scale: 1.02 }} className="space-y-3">
+                        <label className="flex items-center gap-2 text-sm font-semibold text-gray-700" htmlFor="masaOsea">
+                          <Bone className="w-4 h-4 text-gray-600" />
+                          Masa Ósea
+                          <span className="text-xs bg-gray-200 text-gray-700 px-2 py-0.5 rounded-full ml-auto">Estimada</span>
+                        </label>
+                        <div className="relative">
+                          <input
+                            type="number"
+                            step="0.1"
+                            id="masaOsea"
+                            value={masaOsea}
+                            onChange={(e) => setMasaOsea(e.target.value)}
+                            className={`w-full px-4 py-3 pr-12 text-lg border-2 rounded-xl focus:ring-4 focus:ring-gray-600/20 focus:border-gray-600 transition-all ${
+                              errors.masaOsea ? 'border-red-500 bg-red-50' : masaOsea ? 'border-gray-500 bg-gray-50/50' : 'border-gray-300'
+                            }`}
+                            placeholder="3.2"
+                          />
+                          <div className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 font-medium text-sm">kg</div>
+                        </div>
+                        {errors.masaOsea && (
+                          <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-red-600 text-sm flex items-center gap-2">
+                            <AlertTriangle className="w-4 h-4" />
+                            {errors.masaOsea}
+                          </motion.p>
+                        )}
+                      </motion.div>
+
+                      {/* Edad Metabólica */}
+                      <motion.div whileHover={{ scale: 1.02 }} className="space-y-3 md:col-span-2">
+                        <label className="flex items-center gap-2 text-sm font-semibold text-gray-700" htmlFor="edadMetabolica">
+                          <User className="w-4 h-4 text-indigo-600" />
+                          Edad Metabólica
+                          <span className="text-xs bg-indigo-200 text-indigo-700 px-2 py-0.5 rounded-full ml-auto">Del algoritmo</span>
+                        </label>
+                        <div className="relative">
+                          <input
+                            type="number"
+                            step="1"
+                            id="edadMetabolica"
+                            value={edadMetabolica}
+                            onChange={(e) => setEdadMetabolica(e.target.value)}
+                            className={`w-full px-4 py-3 pr-16 text-lg border-2 rounded-xl focus:ring-4 focus:ring-indigo-600/20 focus:border-indigo-600 transition-all ${
+                              errors.edadMetabolica ? 'border-red-500 bg-red-50' : edadMetabolica ? 'border-indigo-500 bg-indigo-50/50' : 'border-gray-300'
+                            }`}
+                            placeholder="25"
+                          />
+                          <div className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 font-medium text-sm">años</div>
+                        </div>
+                        <p className="text-xs text-gray-500 flex items-center gap-1">
+                          <Info className="w-3 h-3" />
+                          Comparación del ritmo metabólico con valores promedio por edad
+                        </p>
+                        {errors.edadMetabolica && (
+                          <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-red-600 text-sm flex items-center gap-2">
+                            <AlertTriangle className="w-4 h-4" />
+                            {errors.edadMetabolica}
+                          </motion.p>
+                        )}
+                      </motion.div>
+                    </div>
                   </div>
-                </div>
-                {/* Se elimina la visualización de fórmula/cálculo */}
-              </motion.div>
-            )}
-            {/* Se elimina el resumen de puntuación y detalles de puntos */}
+                </motion.div>
+              )}
+            </AnimatePresence>
           </form>
 
-          {/* Footer */}
-          <div className="bg-gray-50 px-8 py-6 flex justify-between items-center">
-            <button
+          {/* Footer con botones */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.4 }}
+            className="bg-gray-50 px-8 py-6 flex justify-between items-center border-t"
+          >
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
               type="button"
               onClick={onClose}
-              className="px-6 py-3 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-xl transition-colors flex items-center gap-2"
+              className="px-6 py-3 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-xl transition-colors flex items-center gap-2 font-medium"
             >
               <XCircle size={20} />
               Cancelar
-            </button>
+            </motion.button>
 
-            <button
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
               onClick={handleSubmit}
-              disabled={isSubmitting || !height || !weight || !heightValidation.isValid || !weightValidation.isValid}
-              className="px-8 py-3 bg-gradient-to-r from-[#006837] to-[#00a65a] hover:from-[#005229] hover:to-[#008347] text-white rounded-xl disabled:opacity-50 disabled:cursor-not-allowed transition-all font-medium flex items-center gap-2"
+              disabled={isSubmitting}
+              className="px-8 py-3 bg-gradient-to-r from-[#006837] to-[#00a65a] hover:from-[#005229] hover:to-[#008347] text-white rounded-xl disabled:opacity-50 disabled:cursor-not-allowed transition-all font-medium flex items-center gap-2 shadow-lg"
             >
               {isSubmitting ? (
                 <>
-                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <motion.div
+                    animate={{ rotate: 360 }}
+                    transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                    className="w-5 h-5 border-2 border-white border-t-transparent rounded-full"
+                  />
                   Guardando...
                 </>
               ) : (
@@ -444,8 +671,8 @@ export const MeasurementsModal = memo(({
                   Guardar Medidas
                 </>
               )}
-            </button>
-          </div>
+            </motion.button>
+          </motion.div>
         </motion.div>
       </motion.div>
     </AnimatePresence>

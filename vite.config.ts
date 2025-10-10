@@ -13,10 +13,10 @@ export default defineConfig({
     host: true,
     proxy: {
       '/api': {
-        target: 'http://localhost:3000',
+        target: 'https://api.tracksport.socratesunicordoba.co',
         changeOrigin: true,
-        secure: false,
-        rewrite: (path) => path.replace(/^\/api/, '/tracksport/api/v1'),
+        secure: true,
+        rewrite: (path) => path.replace(/^\/api/, ''),
       },
     },
   },

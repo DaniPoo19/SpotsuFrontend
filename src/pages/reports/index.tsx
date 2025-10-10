@@ -68,7 +68,10 @@ export const ReportsPage = () => {
     .filter(r => r.athlete_name.toLowerCase().includes(search.toLowerCase()))
     .sort((a,b)=> sortOrder==='desc'? b.total_score - a.total_score : a.total_score - b.total_score);
 
-  const maxScore = filtered.length ? Math.max(...filtered.map(r=>r.total_score)) : 1;
+  // Normalización por columna
+  const maxSports = filtered.length ? Math.max(...filtered.map(r=>r.sports_score)) : 1;
+  const maxMorpho = filtered.length ? Math.max(...filtered.map(r=>r.morpho_score)) : 1;
+  const maxTotal = filtered.length ? Math.max(...filtered.map(r=>r.total_score)) : 1;
 
   const toggleSortOrder = () => setSortOrder(p=> p==='asc'?'desc':'asc');
 
@@ -117,7 +120,9 @@ export const ReportsPage = () => {
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-6 py-4 text-left text-sm font-semibold text-gray-600">Nombre</th>
-                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-600">Calificación Final</th>
+                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-600">Logros Deportivos (40%)</th>
+                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-600">Valoración Morfofuncional (60%)</th>
+                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-600">Calificación Total</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
@@ -129,7 +134,7 @@ export const ReportsPage = () => {
                   <td className="px-6 py-4">
                     <div className="flex items-center">
                       <div className="w-full bg-gray-200 rounded-full h-2 mr-2 overflow-hidden">
-                        <div className="bg-[#006837] h-2" style={{ width: `${((row.sports_score / maxScore) * 100).toFixed(2)}%` }} />
+                        <div className="bg-[#006837] h-2" style={{ width: `${((row.sports_score / maxSports) * 100).toFixed(2)}%` }} />
                       </div>
                       <span className="text-sm font-medium">{row.sports_score.toFixed(2)}</span>
                     </div>
@@ -137,13 +142,18 @@ export const ReportsPage = () => {
                   <td className="px-6 py-4">
                     <div className="flex items-center">
                       <div className="w-full bg-gray-200 rounded-full h-2 mr-2 overflow-hidden">
-                        <div className="bg-[#A8D08D] h-2" style={{ width: `${((row.morpho_score / maxScore) * 100).toFixed(2)}%` }} />
+                        <div className="bg-[#A8D08D] h-2" style={{ width: `${((row.morpho_score / maxMorpho) * 100).toFixed(2)}%` }} />
                       </div>
                       <span className="text-sm font-medium">{row.morpho_score.toFixed(2)}</span>
                     </div>
                   </td>
                   <td className="px-6 py-4">
-                    <span className="font-medium text-gray-900">{row.total_score.toFixed(2)}</span>
+                    <div className="flex items-center">
+                      <div className="w-full bg-gray-200 rounded-full h-2 mr-2 overflow-hidden">
+                        <div className="bg-[#1f2937] h-2" style={{ width: `${((row.total_score / maxTotal) * 100).toFixed(2)}%` }} />
+                      </div>
+                      <span className="font-medium text-gray-900">{row.total_score.toFixed(2)}</span>
+                    </div>
                   </td>
                 </tr>
               ))}
