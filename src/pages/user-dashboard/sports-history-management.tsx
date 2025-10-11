@@ -195,11 +195,13 @@ export const SportsHistoryManagementPage = () => {
 
   // Descargar certificado
   const handleDownloadCertificate = useCallback((certificateUrl: string) => {
-    const uploadBase = `${import.meta.env.VITE_API_URL || '/api'}/uploads/`;
-    const fileUrl = certificateUrl.startsWith('http') 
-      ? certificateUrl 
-      : `${uploadBase}${certificateUrl}`;
-    
+    const apiHost = 'https://api.tracksport.socratesunicordoba.co';
+    if (/^https?:\/\//.test(certificateUrl)) {
+      window.open(certificateUrl, '_blank');
+      return;
+    }
+    const normalizedPath = certificateUrl.startsWith('/') ? certificateUrl : `/${certificateUrl}`;
+    const fileUrl = `${apiHost}${normalizedPath}`;
     window.open(fileUrl, '_blank');
   }, []);
 

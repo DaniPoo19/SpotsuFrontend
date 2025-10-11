@@ -16,7 +16,8 @@ export default defineConfig({
         target: 'https://api.tracksport.socratesunicordoba.co',
         changeOrigin: true,
         secure: true,
-        rewrite: (path) => path.replace(/^\/api/, ''),
+        // Asegura que todas las rutas locales /api/* lleguen como /tracksport/api/v1/*
+        rewrite: (path) => path.replace(/^\/api/, '/tracksport/api/v1'),
       },
     },
   },

@@ -185,11 +185,15 @@ export const DocumentsPage = () => {
   }, [loadDocuments]);
 
   const handleDownloadDocument = useCallback((document: AttachedDocument) => {
-    const uploadBase = `${import.meta.env.VITE_API_URL || '/api'}/uploads/`;
-    const fileUrl = document.file_path.startsWith('http') 
-      ? document.file_path 
-      : `${uploadBase}${document.file_path}`;
-    
+    const apiHost = 'https://api.tracksport.socratesunicordoba.co';
+    // Si ya viene como URL absoluta, usarla tal cual
+    if (/^https?:\/\//.test(document.file_path)) {
+      window.open(document.file_path, '_blank');
+      return;
+    }
+    // Construir URL absoluta con host API. Respetar slash inicial en file_path
+    const normalizedPath = document.file_path.startsWith('/') ? document.file_path : `/${document.file_path}`;
+    const fileUrl = `${apiHost}${normalizedPath}`;
     window.open(fileUrl, '_blank');
   }, []);
 
