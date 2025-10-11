@@ -12,11 +12,11 @@ services:
       # Opcional: para logs de nginx
       - nginx_logs:/var/log/nginx
     networks:
-      tracksport-network:
+      spotsu-network:
         ipv4_address: 172.20.10.12
 
 networks:
-  tracksport-network:
+  spotsu-network:
     external: true
 
 volumes:
