@@ -11,14 +11,6 @@ export default defineConfig({
     port: 5174,
     strictPort: true,
     host: true,
-    proxy: {
-      '/api': {
-        target: 'https://api.tracksport.socratesunicordoba.co',
-        changeOrigin: true,
-        secure: true,
-        rewrite: (path) => path.replace(/^\/api/, ''),
-      },
-    },
   },
   base: '/',
 });

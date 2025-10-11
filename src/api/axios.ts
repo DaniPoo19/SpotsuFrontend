@@ -3,8 +3,8 @@ import { toast } from 'react-hot-toast';
 
 // Configuración de la API
 const API_CONFIG = {
-  // Endpoints directos sin prefijo
-  BASE_URL: '/api',
+  // Usar variable de entorno o fallback
+  BASE_URL: import.meta.env.VITE_API_URL || '/api',
   API_PREFIX: ''
 } as const;
 

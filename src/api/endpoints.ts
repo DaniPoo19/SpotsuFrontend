@@ -1,7 +1,7 @@
 /**
  * Endpoints centralizados para la API
  * Estos endpoints son relativos a la baseURL definida en axiosInstance
- * La baseURL es '/api' - todos estos paths se concatenan a ese prefijo
+ * La baseURL usa VITE_API_URL o '/api' como fallback - todos estos paths se concatenan a esa URL base
  */
 
 const API_ENDPOINTS = {
