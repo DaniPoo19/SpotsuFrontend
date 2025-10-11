@@ -1,7 +1,7 @@
 /**
  * Endpoints centralizados para la API
  * Estos endpoints son relativos a la baseURL definida en axiosInstance
- * La baseURL ya incluye el prefijo '/tracksport/api/v1'
+ * La baseURL es '/api' - todos estos paths se concatenan a ese prefijo
  */
 
 const API_ENDPOINTS = {

@@ -3,7 +3,7 @@ import { toast } from 'react-hot-toast';
 
 // Configuración de la API
 const API_CONFIG = {
-  // Usar proxy de Vite para evitar problemas de CORS
+  // Endpoints directos sin prefijo
   BASE_URL: '/api',
   API_PREFIX: ''
 } as const;

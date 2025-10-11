@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 export const api = axios.create({
-  // Usar proxy de Vite para evitar problemas de CORS
+  // Endpoints directos sin prefijo
   baseURL: '/api',
 });
 
