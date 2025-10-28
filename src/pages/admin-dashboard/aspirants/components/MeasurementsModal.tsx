@@ -242,7 +242,7 @@ export const MeasurementsModal = memo(({
                   <div className="p-2 bg-white/20 rounded-xl backdrop-blur-sm">
                     <Ruler className="w-6 h-6" />
                   </div>
-                  Variables Morfológicas
+                  Variables Morfofuncionales
                 </h2>
                 <p className="text-white/90 text-lg">
                   {aspirant?.personalInfo?.firstName} {aspirant?.personalInfo?.lastName}

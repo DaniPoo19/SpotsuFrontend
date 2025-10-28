@@ -11,6 +11,7 @@ import {
   Stethoscope,
   Medal,
   Trophy,
+  Trash2,
 } from 'lucide-react';
 import { mockAspirants } from '../data';
 import { aspirantsService } from '@/services/aspirants.service';
@@ -55,9 +56,10 @@ export const AspirantPage = () => {
 
   // Documentos adjuntos
   const [attachedDocs, setAttachedDocs] = useState<{
-    medicalCertificate?: { id: string; path: string; };
-    consentForm?: { id: string; path: string; };
+    medicalCertificate?: { id: string; path: string; status?: string; };
+    consentForm?: { id: string; path: string; status?: string; };
   }>({});
+  const [deletingDocument, setDeletingDocument] = useState<string | null>(null);
 
   // Historial deportivo cargado de la postulación
   interface SportHistoryItem {
@@ -289,26 +291,10 @@ export const AspirantPage = () => {
 
     try {
       console.log('Enviando variables morfológicas:', payload);
-      // Upsert: separar nuevas vs existentes
-      const existing = await morphologicalService.getVariableResults(post.id);
-      const getExistingByVarId = (varId: string) =>
-        existing.find(r => (r.morphological_variable_id ?? r.morphological_variable?.id) === varId);
-
-      const toUpdate = payload
-        .map(p => ({ p, existing: getExistingByVarId(p.morphological_variable_id) }))
-        .filter(x => x.existing)
-        .map(x => ({ id: (x.existing as any).id as string, result: x.p.result }));
-
-      const toCreate = payload.filter(p => !getExistingByVarId(p.morphological_variable_id));
-
-      // Ejecutar actualizaciones en serie para evitar saturar API
-      for (const u of toUpdate) {
-        await morphologicalService.updateVariableResult(u.id, u.result);
-      }
-
-      if (toCreate.length > 0) {
-        await morphologicalService.createVariableResults(post.id, toCreate);
-      }
+      
+      // Usar el endpoint correcto del backend que maneja upsert automáticamente
+      // El backend verifica si existen y actualiza o crea según corresponda
+      await morphologicalService.updateVariableResults(post.id, payload);
       
       // Actualizar el estado del aspirante
       setAspirant(prev => prev ? { ...prev, evaluated: true } : prev);
@@ -655,8 +641,16 @@ export const AspirantPage = () => {
         };
 
         setAttachedDocs({
-          medicalCertificate: medicalCert ? { id: medicalCert.id, path: buildUrl(medicalCert, true) || '' } : undefined,
-          consentForm: consentForm ? { id: consentForm.id, path: buildUrl(consentForm, true) || '' } : undefined,
+          medicalCertificate: medicalCert ? { 
+            id: medicalCert.id, 
+            path: buildUrl(medicalCert, true) || '',
+            status: medicalCert.status
+          } : undefined,
+          consentForm: consentForm ? { 
+            id: consentForm.id, 
+            path: buildUrl(consentForm, true) || '',
+            status: consentForm.status
+          } : undefined,
         });
         docsLoadedRef.current.add(activePostulation.id);
       } catch (err) {
@@ -688,6 +682,86 @@ export const AspirantPage = () => {
       console.error('Error actualizando estado del logro:', err);
     } finally {
       setUpdatingAchievement(null);
+    }
+  };
+
+  /* =================   ELIMINAR DOCUMENTO ADJUNTO   ================= */
+  const handleDeleteDocument = async (documentId: string, documentType: 'medical' | 'consent') => {
+    if (!documentId) return;
+    
+    const confirmDelete = window.confirm(
+      `¿Estás seguro de eliminar este documento? El estudiante podrá subir uno nuevo desde su panel.`
+    );
+    
+    if (!confirmDelete) return;
+    
+    setDeletingDocument(documentId);
+    try {
+      console.log('[DeleteDocument] Eliminando documento:', documentId);
+      await attachedDocumentsService.deleteDocument(documentId);
+      
+      // Actualizar el estado local para reflejar la eliminación
+      setAttachedDocs(prev => ({
+        ...prev,
+        [documentType === 'medical' ? 'medicalCertificate' : 'consentForm']: undefined
+      }));
+      
+      console.log('[DeleteDocument] Documento eliminado exitosamente');
+      
+      // Marcar que los documentos deben recargarse
+      if (activePostulation?.id) {
+        docsLoadedRef.current.delete(activePostulation.id);
+      }
+    } catch (err) {
+      console.error('[DeleteDocument] Error eliminando documento:', err);
+      alert('Error al eliminar el documento. Por favor, intenta nuevamente.');
+    } finally {
+      setDeletingDocument(null);
+    }
+  };
+
+  /* =================   APROBAR DOCUMENTO ADJUNTO   ================= */
+  const handleApproveDocument = async (documentId: string, documentType: 'medical' | 'consent') => {
+    if (!documentId) return;
+    
+    const confirmApprove = window.confirm(
+      `¿Confirmas que este documento es válido y deseas aprobarlo?`
+    );
+    
+    if (!confirmApprove) return;
+    
+    setDeletingDocument(documentId); // Usamos el mismo estado para el loading
+    try {
+      console.log('[ApproveDocument] Aprobando documento:', documentId);
+      await attachedDocumentsService.updateDocument(documentId, { status: 'Completado' });
+      
+      // Actualizar el estado local para reflejar la aprobación
+      setAttachedDocs(prev => {
+        const key = documentType === 'medical' ? 'medicalCertificate' : 'consentForm';
+        const currentDoc = prev[key];
+        if (!currentDoc) return prev;
+        
+        return {
+          ...prev,
+          [key]: {
+            ...currentDoc,
+            status: 'Completado' as any
+          }
+        };
+      });
+      
+      console.log('[ApproveDocument] Documento aprobado exitosamente');
+      alert('Documento aprobado exitosamente');
+      
+      // Marcar que los documentos deben recargarse
+      if (activePostulation?.id) {
+        docsLoadedRef.current.delete(activePostulation.id);
+      }
+    } catch (err) {
+      console.error('[ApproveDocument] Error aprobando documento:', err);
+      alert('Error al aprobar el documento. Por favor, intenta nuevamente.');
+    } finally {
+      setDeletingDocument(null);
     }
   };
 
@@ -1109,48 +1183,134 @@ export const AspirantPage = () => {
               <div className="grid md:grid-cols-2 gap-6">
               {/* Certificado Médico */}
               <div className="bg-white rounded-lg border p-4">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
                     <Stethoscope className="text-[#006837]" size={20} />
                     <h4 className="font-medium">Certificado Médico</h4>
+                  </div>
+                  {attachedDocs.medicalCertificate && (
+                    <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
+                      (attachedDocs.medicalCertificate as any).status === 'Completado' 
+                        ? 'bg-green-100 text-green-800' 
+                        : 'bg-yellow-100 text-yellow-800'
+                    }`}>
+                      {(attachedDocs.medicalCertificate as any).status || 'Pendiente'}
+                    </span>
+                  )}
                 </div>
-                  {attachedDocs.medicalCertificate ? (
+                {attachedDocs.medicalCertificate ? (
+                  <div className="flex items-center gap-2 justify-end">
                     <a 
                       href={attachedDocs.medicalCertificate.path}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-[#006837] hover:text-[#A8D08D] font-medium flex items-center gap-1"
+                      className="text-[#006837] hover:text-[#A8D08D] font-medium flex items-center gap-1 px-3 py-1 rounded-lg hover:bg-gray-50 transition-colors"
                     >
                       <FileText size={16} />
-                      Ver Documento
+                      Ver
                     </a>
-                  ) : (
-                    <span className="text-yellow-600 text-sm">No cargado</span>
-                  )}
-                </div>
+                    {(attachedDocs.medicalCertificate as any).status !== 'Completado' && (
+                      <button
+                        onClick={() => handleApproveDocument(attachedDocs.medicalCertificate!.id, 'medical')}
+                        disabled={deletingDocument === attachedDocs.medicalCertificate.id}
+                        className="p-1 px-3 text-green-600 hover:bg-green-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                        title="Aprobar documento"
+                      >
+                        {deletingDocument === attachedDocs.medicalCertificate.id ? (
+                          <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-green-600"></div>
+                        ) : (
+                          <>
+                            <CheckCircle size={16} />
+                            <span className="text-sm font-medium">Aprobar</span>
+                          </>
+                        )}
+                      </button>
+                    )}
+                    <button
+                      onClick={() => handleDeleteDocument(attachedDocs.medicalCertificate!.id, 'medical')}
+                      disabled={deletingDocument === attachedDocs.medicalCertificate.id}
+                      className="p-1 px-3 text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                      title="Eliminar documento"
+                    >
+                      {deletingDocument === attachedDocs.medicalCertificate.id ? (
+                        <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-red-600"></div>
+                      ) : (
+                        <>
+                          <Trash2 size={16} />
+                          <span className="text-sm font-medium">Eliminar</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                ) : (
+                  <span className="text-yellow-600 text-sm">No cargado</span>
+                )}
               </div>
 
               {/* Consentimiento Informado */}
               <div className="bg-white rounded-lg border p-4">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
                     <ClipboardCheck className="text-[#006837]" size={20} />
                     <h4 className="font-medium">Consentimiento Informado</h4>
+                  </div>
+                  {attachedDocs.consentForm && (
+                    <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
+                      (attachedDocs.consentForm as any).status === 'Completado' 
+                        ? 'bg-green-100 text-green-800' 
+                        : 'bg-yellow-100 text-yellow-800'
+                    }`}>
+                      {(attachedDocs.consentForm as any).status || 'Pendiente'}
+                    </span>
+                  )}
                 </div>
-                  {attachedDocs.consentForm ? (
+                {attachedDocs.consentForm ? (
+                  <div className="flex items-center gap-2 justify-end">
                     <a 
                       href={attachedDocs.consentForm.path}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-[#006837] hover:text-[#A8D08D] font-medium flex items-center gap-1"
+                      className="text-[#006837] hover:text-[#A8D08D] font-medium flex items-center gap-1 px-3 py-1 rounded-lg hover:bg-gray-50 transition-colors"
                     >
                       <FileText size={16} />
-                      Ver Documento
+                      Ver
                     </a>
-                  ) : (
-                    <span className="text-yellow-600 text-sm">No cargado</span>
-                  )}
-                </div>
+                    {(attachedDocs.consentForm as any).status !== 'Completado' && (
+                      <button
+                        onClick={() => handleApproveDocument(attachedDocs.consentForm!.id, 'consent')}
+                        disabled={deletingDocument === attachedDocs.consentForm.id}
+                        className="p-1 px-3 text-green-600 hover:bg-green-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                        title="Aprobar documento"
+                      >
+                        {deletingDocument === attachedDocs.consentForm.id ? (
+                          <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-green-600"></div>
+                        ) : (
+                          <>
+                            <CheckCircle size={16} />
+                            <span className="text-sm font-medium">Aprobar</span>
+                          </>
+                        )}
+                      </button>
+                    )}
+                    <button
+                      onClick={() => handleDeleteDocument(attachedDocs.consentForm!.id, 'consent')}
+                      disabled={deletingDocument === attachedDocs.consentForm.id}
+                      className="p-1 px-3 text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                      title="Eliminar documento"
+                    >
+                      {deletingDocument === attachedDocs.consentForm.id ? (
+                        <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-red-600"></div>
+                      ) : (
+                        <>
+                          <Trash2 size={16} />
+                          <span className="text-sm font-medium">Eliminar</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                ) : (
+                  <span className="text-yellow-600 text-sm">No cargado</span>
+                )}
               </div>
               </div>
             )}

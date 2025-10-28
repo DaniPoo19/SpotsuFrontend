@@ -438,6 +438,16 @@ export interface PostulationDTO {
       status?: string;
     }>;
   }>;
+  attached_documents?: Array<{
+    id: string;
+    path: string;
+    status: 'Completado' | 'Pendiente' | 'Cancelado';
+    attachedDocumentType: {
+      id: string;
+      name: string;
+      description: string;
+    };
+  }>;
 }
 
 export interface ParQResponseDTO {

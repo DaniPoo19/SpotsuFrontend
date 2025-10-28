@@ -74,6 +74,20 @@ export const morphologicalService = {
   },
 
   /**
+   * Actualizar todas las variables morfológicas de una postulación
+   * Este método usa el endpoint correcto del backend que actualiza/crea en batch
+   * @param postulationId ID de la postulación
+   * @param variables Array de variables con morphological_variable_id y result
+   */
+  async updateVariableResults(postulationId: string, variables: VariableResultPayload[]) {
+    const resp = await api.patch('/morphological-variable-results', {
+      postulation_id: postulationId,
+      variables,
+    });
+    return resp.data?.data ?? resp.data;
+  },
+
+  /**
    * Obtener el puntaje morfofuncional total calculado por el backend para una postulación
    * @param postulationId ID de la postulación
    * @returns Puntaje numérico
