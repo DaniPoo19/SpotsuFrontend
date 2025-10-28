@@ -1,5 +1,5 @@
 # Build Stage
-FROM node:18-alpine AS build
+FROM node:18-slim AS build
 
 # Set the working directory inside the container
 WORKDIR /app
@@ -7,8 +7,11 @@ WORKDIR /app
 # Copy package.json and package-lock.json
 COPY package*.json ./
 
-# Install dependencies
-RUN npm install
+# Limpiar cache de npm y reinstalar dependencias desde cero
+# Esto resuelve el bug de npm con dependencias opcionales de Rollup
+RUN rm -rf node_modules package-lock.json || true && \
+    npm cache clean --force && \
+    npm install
 
 # Copy the rest of your application files
 COPY . .
