@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Search, ArrowUpDown, FileDown } from 'lucide-react';
+import { Search, ArrowUpDown, FileDown, Download } from 'lucide-react';
 import { api } from '@/lib/axios';
 import { reportsService } from '@/services/reports.service';
 import toast from 'react-hot-toast';
@@ -7,6 +7,7 @@ import toast from 'react-hot-toast';
 type SortOrder = 'asc' | 'desc';
 
 interface ReportRow {
+  postulation_id: string;
   athlete_name: string;
   sports_score: number;
   morpho_score: number;
@@ -20,6 +21,7 @@ export const ReportsPage = () => {
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
   const [isLoading, setIsLoading] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [downloadingIndividual, setDownloadingIndividual] = useState<string | null>(null);
 
   // Fetch list of semesters (simple)
   const [semesters, setSemesters] = useState<{id:string,name:string}[]>([]);
@@ -166,44 +168,76 @@ export const ReportsPage = () => {
     }
   };
 
+  const handleDownloadIndividualPDF = async (postulationId: string, athleteName: string) => {
+    // Validación: debe haber un semestre específico seleccionado
+    if (!semesterId || semesterId === '' || semesterId === 'all') {
+      toast.error('Debe seleccionar un semestre específico en el filtro para descargar reportes individuales');
+      return;
+    }
+
+    setDownloadingIndividual(postulationId);
+    try {
+      await reportsService.downloadIndividualReportPDF(postulationId, athleteName);
+      toast.success(`Reporte individual de ${athleteName} descargado exitosamente`);
+    } catch (error) {
+      console.error('Error descargando reporte individual:', error);
+      toast.error('Error al descargar el reporte individual. Inténtalo de nuevo.');
+    } finally {
+      setDownloadingIndividual(null);
+    }
+  };
+
 
   return (
     <div className="p-8">
-      <div className="mb-6 flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Reportes de Postulaciones</h1>
-          <p className="text-gray-600 mt-1">Visualiza y descarga reportes de evaluación por semestre</p>
+      <div className="mb-6">
+        <div className="flex justify-between items-center mb-3">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">Reportes de Postulaciones</h1>
+            <p className="text-gray-600 mt-1">Visualiza y descarga reportes de evaluación por semestre</p>
+          </div>
+          <button
+            onClick={handleDownloadPDF}
+            disabled={isDownloading || !semesterId || semesterId === '' || semesterId === 'all' || semesters.length <= 1}
+            className={`flex items-center gap-2 px-6 py-3 rounded-xl font-medium transition-all ${
+              !semesterId || semesterId === '' || semesterId === 'all' || semesters.length <= 1 || isDownloading
+                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                : 'bg-[#006837] text-white hover:bg-[#005828] shadow-lg hover:shadow-xl'
+            }`}
+            title={
+              !semesterId || semesterId === '' 
+                ? 'Debe seleccionar un período para poder descargar el informe'
+                : semesterId === 'all'
+                ? 'Debe seleccionar un período específico para poder descargar el informe'
+                : semesters.length <= 1
+                ? 'No hay períodos disponibles para generar el informe'
+                : 'Descargar reporte consolidado en formato PDF'
+            }
+          >
+            {isDownloading ? (
+              <>
+                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                Descargando...
+              </>
+            ) : (
+              <>
+                <FileDown size={20} />
+                Descargar Reporte General
+              </>
+            )}
+          </button>
         </div>
-        <button
-          onClick={handleDownloadPDF}
-          disabled={isDownloading || !semesterId || semesterId === '' || semesterId === 'all' || semesters.length <= 1}
-          className={`flex items-center gap-2 px-6 py-3 rounded-xl font-medium transition-all ${
-            !semesterId || semesterId === '' || semesterId === 'all' || semesters.length <= 1 || isDownloading
-              ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-              : 'bg-[#006837] text-white hover:bg-[#005828] shadow-lg hover:shadow-xl'
-          }`}
-          title={
-            !semesterId || semesterId === '' 
-              ? 'Debe seleccionar un período para poder descargar el informe'
-              : semesterId === 'all'
-              ? 'Debe seleccionar un período específico para poder descargar el informe'
-              : semesters.length <= 1
-              ? 'No hay períodos disponibles para generar el informe'
-              : 'Descargar reporte en formato PDF'
-          }
-        >
-          {isDownloading ? (
-            <>
-              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              Descargando...
-            </>
-          ) : (
-            <>
-              <FileDown size={20} />
-              Descargar PDF
-            </>
-          )}
-        </button>
+        
+        {/* Nota informativa */}
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-start gap-2">
+          <svg className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+          </svg>
+          <div className="text-sm text-blue-800">
+            <p className="font-medium">Nota importante:</p>
+            <p>Para descargar reportes (consolidado o individuales), debe seleccionar un <strong>semestre específico</strong> en el filtro de búsqueda. La opción "Todos" es solo para visualización.</p>
+          </div>
+        </div>
       </div>
 
       <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
@@ -219,15 +253,21 @@ export const ReportsPage = () => {
                 onChange={(e) => setSearch(e.target.value)}
               />
             </div>
-            <select
-              className="px-4 py-2 border rounded-xl"
-              value={semesterId}
-              onChange={(e)=> setSemesterId(e.target.value)}
-            >
-              {semesters.map(s=> (
-                <option key={s.id} value={s.id}>{s.name}</option>
-              ))}
-            </select>
+            <div className="flex flex-col gap-1">
+              <label htmlFor="semester-filter" className="text-xs font-medium text-gray-600 px-1">
+                Filtrar por Semestre
+              </label>
+              <select
+                id="semester-filter"
+                className="px-4 py-2 border rounded-xl bg-white hover:bg-gray-50 cursor-pointer transition-colors"
+                value={semesterId}
+                onChange={(e)=> setSemesterId(e.target.value)}
+              >
+                {semesters.map(s=> (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </select>
+            </div>
             <button
               onClick={toggleSortOrder}
               className="flex items-center gap-2 px-4 py-2 border rounded-xl hover:bg-gray-50"
@@ -247,12 +287,13 @@ export const ReportsPage = () => {
                 <th className="px-6 py-4 text-left text-sm font-semibold text-gray-600">Logros Deportivos (40%)</th>
                 <th className="px-6 py-4 text-left text-sm font-semibold text-gray-600">Valoración Morfofuncional (60%)</th>
                 <th className="px-6 py-4 text-left text-sm font-semibold text-gray-600">Calificación Total</th>
+                <th className="px-6 py-4 text-center text-sm font-semibold text-gray-600">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
               {isLoading ? (
                 <tr>
-                  <td colSpan={5} className="px-6 py-12 text-center">
+                  <td colSpan={6} className="px-6 py-12 text-center">
                     <div className="flex flex-col items-center justify-center">
                       <div className="w-8 h-8 border-4 border-[#006837] border-t-transparent rounded-full animate-spin mb-4"></div>
                       <p className="text-gray-500">Cargando reportes...</p>
@@ -261,7 +302,7 @@ export const ReportsPage = () => {
                 </tr>
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-6 py-12 text-center">
+                  <td colSpan={6} className="px-6 py-12 text-center">
                     <div className="flex flex-col items-center justify-center">
                       <p className="text-gray-500 text-lg mb-2">No hay datos disponibles</p>
                       <p className="text-gray-400 text-sm">
@@ -272,7 +313,7 @@ export const ReportsPage = () => {
                 </tr>
               ) : (
                 filtered.map((row,i) => (
-                <tr key={row?.athlete_name || `row-${i}`} className="hover:bg-gray-50">
+                <tr key={row?.postulation_id || row?.athlete_name || `row-${i}`} className="hover:bg-gray-50">
                   <td className="px-6 py-4 text-center">
                     {i+1}
                   </td>
@@ -303,6 +344,38 @@ export const ReportsPage = () => {
                   </td>
                   <td className="px-6 py-4">
                     <span className="font-medium text-gray-900">{(row?.total_score || 0).toFixed(2)}</span>
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="flex justify-center">
+                      <button
+                        onClick={() => handleDownloadIndividualPDF(row.postulation_id, row.athlete_name)}
+                        disabled={!row.postulation_id || !semesterId || semesterId === 'all' || downloadingIndividual === row.postulation_id}
+                        className={`flex items-center gap-2 px-3 py-2 rounded-lg font-medium text-sm transition-all ${
+                          !row.postulation_id || !semesterId || semesterId === 'all' || downloadingIndividual === row.postulation_id
+                            ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                            : 'bg-[#006837] text-white hover:bg-[#005828] shadow hover:shadow-md'
+                        }`}
+                        title={
+                          !row.postulation_id
+                            ? 'ID de postulación no disponible'
+                            : !semesterId || semesterId === 'all'
+                            ? 'Seleccione un semestre específico para descargar'
+                            : 'Descargar reporte individual'
+                        }
+                      >
+                        {downloadingIndividual === row.postulation_id ? (
+                          <>
+                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                            <span>Descargando...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Download size={16} />
+                            <span>Descargar</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
                   </td>
                 </tr>
                 ))

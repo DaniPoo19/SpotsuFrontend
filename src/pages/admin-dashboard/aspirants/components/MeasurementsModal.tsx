@@ -67,16 +67,19 @@ export const MeasurementsModal = memo(({
   weights,
   initialData
 }: MeasurementsModalProps) => {
+  // Ref para evitar el parpadeo al cargar datos iniciales
+  const initialDataLoadedRef = React.useRef(false);
+  
   // Estados para variables de INGRESO MANUAL
-  const [estatura, setEstatura] = useState<string>(initialData?.estatura ? String(initialData.estatura) : '');
-  const [pesoCorporal, setPesoCorporal] = useState<string>(initialData?.pesoCorporal ? String(initialData.pesoCorporal) : '');
-  const [potenciaAerobica, setPotenciaAerobica] = useState<string>(initialData?.potenciaAerobica ? String(initialData.potenciaAerobica) : '');
+  const [estatura, setEstatura] = useState<string>('');
+  const [pesoCorporal, setPesoCorporal] = useState<string>('');
+  const [velocidad, setVelocidad] = useState<string>(''); // Nueva: velocidad para calcular VO2 MAX
   
   // Estados para variables CALCULADAS (desde bioimpedancia)
-  const [masaMuscular, setMasaMuscular] = useState<string>(initialData?.masaMuscular ? String(initialData.masaMuscular) : '');
-  const [grasaVisceral, setGrasaVisceral] = useState<string>(initialData?.grasaVisceral ? String(initialData.grasaVisceral) : '');
-  const [masaOsea, setMasaOsea] = useState<string>(initialData?.masaOsea ? String(initialData.masaOsea) : '');
-  const [edadMetabolica, setEdadMetabolica] = useState<string>(initialData?.edadMetabolica ? String(initialData.edadMetabolica) : '');
+  const [masaMuscular, setMasaMuscular] = useState<string>('');
+  const [grasaVisceral, setGrasaVisceral] = useState<string>('');
+  const [masaOsea, setMasaOsea] = useState<string>('');
+  const [edadMetabolica, setEdadMetabolica] = useState<string>('');
   
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -91,9 +94,24 @@ export const MeasurementsModal = memo(({
     return parseFloat((weightKg / (heightM * heightM)).toFixed(2));
   }, []);
 
-  const imc = calculateBMI(parseFloat(estatura) || 0, parseFloat(pesoCorporal) || 0);
+  const imc = useMemo(() => {
+    return calculateBMI(parseFloat(estatura) || 0, parseFloat(pesoCorporal) || 0);
+  }, [estatura, pesoCorporal, calculateBMI]);
 
-  // 2. Calcular Masa Grasa automáticamente (Peso - Masa Muscular)
+  // 2. Calcular VO2 MAX automáticamente desde la velocidad
+  // Fórmula: VO2 Max = 5,857 x Velocidad (Km/h) – 19,458
+  const calculateVO2Max = useCallback((velocidadKmh: number): number => {
+    if (velocidadKmh <= 0) return 0;
+    const vo2 = 5.857 * velocidadKmh - 19.458;
+    // Asegurar que no sea negativo y redondear a 2 decimales
+    return parseFloat(Math.max(0, vo2).toFixed(2));
+  }, []);
+
+  const potenciaAerobica = useMemo(() => {
+    return calculateVO2Max(parseFloat(velocidad) || 0);
+  }, [velocidad, calculateVO2Max]);
+
+  // 3. Calcular Masa Grasa automáticamente (Peso - Masa Muscular)
   const masaGrasa = useMemo(() => {
     const peso = parseFloat(pesoCorporal) || 0;
     const muscular = parseFloat(masaMuscular) || 0;
@@ -110,16 +128,27 @@ export const MeasurementsModal = memo(({
     }
   }, [estatura, pesoCorporal]);
 
-  // Sincronizar con valores iniciales
+  // Sincronizar con valores iniciales SOLO UNA VEZ para evitar parpadeo
   useEffect(() => {
-    if (initialData) {
+    if (initialData && !initialDataLoadedRef.current) {
+      console.log('[] Cargando datos iniciales en modal:', initialData);
+      
       if (initialData.estatura !== undefined) setEstatura(String(initialData.estatura));
       if (initialData.pesoCorporal !== undefined) setPesoCorporal(String(initialData.pesoCorporal));
-      if (initialData.potenciaAerobica !== undefined) setPotenciaAerobica(String(initialData.potenciaAerobica));
       if (initialData.masaMuscular !== undefined) setMasaMuscular(String(initialData.masaMuscular));
       if (initialData.grasaVisceral !== undefined) setGrasaVisceral(String(initialData.grasaVisceral));
       if (initialData.masaOsea !== undefined) setMasaOsea(String(initialData.masaOsea));
       if (initialData.edadMetabolica !== undefined) setEdadMetabolica(String(initialData.edadMetabolica));
+      
+      // Si existe potenciaAerobica, calcular velocidad inversa
+      // Fórmula inversa: Velocidad = (VO2 Max + 19.458) / 5.857
+      if (initialData.potenciaAerobica !== undefined && initialData.potenciaAerobica > 0) {
+        const velocidadCalculada = (initialData.potenciaAerobica + 19.458) / 5.857;
+        setVelocidad(velocidadCalculada.toFixed(2));
+      }
+      
+      // Marcar como cargado para evitar re-cargas
+      initialDataLoadedRef.current = true;
     }
   }, [initialData]);
 
@@ -128,11 +157,11 @@ export const MeasurementsModal = memo(({
     
     const estaturaNum = parseFloat(estatura);
     const pesoCorporalNum = parseFloat(pesoCorporal);
+    const velocidadNum = parseFloat(velocidad);
     const masaMuscularNum = parseFloat(masaMuscular);
     const grasaVisceralNum = parseFloat(grasaVisceral);
     const edadMetabolicaNum = parseFloat(edadMetabolica);
     const masaOseaNum = parseFloat(masaOsea);
-    const potenciaAerobicaNum = parseFloat(potenciaAerobica);
 
     const newErrors: Record<string, string> = {};
 
@@ -149,10 +178,15 @@ export const MeasurementsModal = memo(({
       newErrors.pesoCorporal = 'El peso debe estar entre 30 y 200 kg';
     }
 
-    if (!potenciaAerobicaNum || potenciaAerobicaNum <= 0) {
-      newErrors.potenciaAerobica = 'La Potencia Aeróbica es obligatoria';
-    } else if (potenciaAerobicaNum < 10 || potenciaAerobicaNum > 100) {
-      newErrors.potenciaAerobica = 'El VO₂máx debe estar entre 10 y 100 ml/kg/min';
+    if (!velocidadNum || velocidadNum <= 0) {
+      newErrors.velocidad = 'La velocidad es obligatoria';
+    } else if (velocidadNum < 5 || velocidadNum > 25) {
+      newErrors.velocidad = 'La velocidad debe estar entre 5 y 25 km/h';
+    }
+    
+    // Validar que el VO2 calculado esté en rango razonable
+    if (potenciaAerobica < 10 || potenciaAerobica > 100) {
+      newErrors.velocidad = 'La velocidad ingresada genera un VO₂máx fuera de rango (10-100 ml/kg/min)';
     }
 
     // Validaciones - DATOS DE BIOIMPEDANCIA
@@ -183,6 +217,8 @@ export const MeasurementsModal = memo(({
       setIsSubmitting(true);
       setErrors({});
       
+      console.log('[] Guardando medidas con VO2 calculado:', potenciaAerobica);
+      
       await onSubmit({
         estatura: estaturaNum,
         pesoCorporal: pesoCorporalNum,
@@ -192,7 +228,7 @@ export const MeasurementsModal = memo(({
         grasaVisceral: grasaVisceralNum,
         edadMetabolica: edadMetabolicaNum,
         masaOsea: masaOseaNum,
-        potenciaAerobica: potenciaAerobicaNum
+        potenciaAerobica: potenciaAerobica // Usar el valor calculado desde velocidad
       });
       
       onClose();
@@ -370,93 +406,145 @@ export const MeasurementsModal = memo(({
                   )}
                 </motion.div>
 
-                {/* Potencia Aeróbica */}
+                {/* Velocidad (para calcular VO2 MAX) */}
                 <motion.div
                   whileHover={{ scale: 1.02 }}
                   className="space-y-3"
                 >
-                  <label className="flex items-center gap-2 text-sm font-semibold text-gray-700" htmlFor="potenciaAerobica">
+                  <label className="flex items-center gap-2 text-sm font-semibold text-gray-700" htmlFor="velocidad">
                     <TrendingUp className="w-4 h-4 text-[#006837]" />
-                    Potencia Aeróbica (VO₂máx)
+                    Velocidad Test Course Navette
                   </label>
                   <div className="relative group">
                     <input
                       type="number"
                       step="0.1"
-                      id="potenciaAerobica"
-                      value={potenciaAerobica}
-                      onChange={(e) => setPotenciaAerobica(e.target.value)}
-                      className={`w-full px-4 py-3 pr-16 text-lg border-2 rounded-xl focus:ring-4 focus:ring-[#006837]/20 focus:border-[#006837] transition-all ${
-                        errors.potenciaAerobica 
+                      id="velocidad"
+                      value={velocidad}
+                      onChange={(e) => setVelocidad(e.target.value)}
+                      className={`w-full px-4 py-3 pr-12 text-lg border-2 rounded-xl focus:ring-4 focus:ring-[#006837]/20 focus:border-[#006837] transition-all ${
+                        errors.velocidad 
                           ? 'border-red-500 bg-red-50' 
-                          : potenciaAerobica 
+                          : velocidad 
                             ? 'border-green-500 bg-green-50/50' 
                             : 'border-gray-300 hover:border-gray-400'
                       }`}
-                      placeholder="45.5"
+                      placeholder="12.5"
                     />
                     <div className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 font-medium text-sm">
-                      ml/kg/min
+                      km/h
                     </div>
                   </div>
-                  {errors.potenciaAerobica && (
+                  <p className="text-xs text-gray-500 flex items-center gap-1">
+                    <Info className="w-3 h-3" />
+                    Velocidad alcanzada en el test de Course Navette
+                  </p>
+                  {errors.velocidad && (
                     <motion.p
                       initial={{ opacity: 0, x: -10 }}
                       animate={{ opacity: 1, x: 0 }}
                       className="text-red-600 text-sm flex items-center gap-2"
                     >
                       <AlertTriangle className="w-4 h-4" />
-                      {errors.potenciaAerobica}
+                      {errors.velocidad}
                     </motion.p>
                   )}
                 </motion.div>
               </div>
             </motion.div>
 
-            {/* IMC Calculado Automáticamente */}
+            {/* Valores Calculados Automáticamente */}
             <AnimatePresence>
               {estatura && pesoCorporal && (
                 <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  exit={{ opacity: 0, height: 0 }}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 20 }}
                   transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                  className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl p-6 border-2 border-blue-200"
+                  className="space-y-4"
                 >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                      <motion.div
-                        animate={{ rotate: [0, 360] }}
-                        transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-                        className="p-3 bg-blue-100 rounded-xl"
-                      >
-                        <Calculator className="w-6 h-6 text-blue-600" />
-                      </motion.div>
-                      <div>
-                        <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-                          IMC (Calculado)
-                          <span className="text-xs bg-blue-200 text-blue-700 px-2 py-1 rounded-full">Automático</span>
-                        </h3>
-                        <p className="text-sm text-gray-600">Índice de Masa Corporal</p>
+                  {/* IMC Calculado */}
+                  <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl p-6 border-2 border-blue-200">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-4">
+                        <motion.div
+                          animate={{ rotate: [0, 360] }}
+                          transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+                          className="p-3 bg-blue-100 rounded-xl"
+                        >
+                          <Calculator className="w-6 h-6 text-blue-600" />
+                        </motion.div>
+                        <div>
+                          <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                            IMC (Calculado)
+                            <span className="text-xs bg-blue-200 text-blue-700 px-2 py-1 rounded-full">Automático</span>
+                          </h3>
+                          <p className="text-sm text-gray-600">Índice de Masa Corporal</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <motion.div
+                          key={imc}
+                          initial={{ scale: 1.2 }}
+                          animate={{ scale: 1 }}
+                          className="text-4xl font-bold text-blue-600"
+                        >
+                          {imc.toFixed(2)}
+                        </motion.div>
+                        <div className="text-sm text-gray-500 font-medium">kg/m²</div>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <motion.div
-                        key={imc}
-                        initial={{ scale: 1.2 }}
-                        animate={{ scale: 1 }}
-                        className="text-4xl font-bold text-blue-600"
-                      >
-                        {imc.toFixed(2)}
-                      </motion.div>
-                      <div className="text-sm text-gray-500 font-medium">kg/m²</div>
+                    <div className="mt-4">
+                      <div className={`inline-flex px-4 py-2 rounded-full border-2 font-semibold ${bmiStatus.color}`}>
+                        {bmiStatus.label}
+                      </div>
                     </div>
                   </div>
-                  <div className="mt-4">
-                    <div className={`inline-flex px-4 py-2 rounded-full border-2 font-semibold ${bmiStatus.color}`}>
-                      {bmiStatus.label}
-                    </div>
-                  </div>
+
+                  {/* VO2 MAX Calculado */}
+                  {velocidad && potenciaAerobica > 0 && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                      className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-2xl p-6 border-2 border-green-200"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-4">
+                          <motion.div
+                            animate={{ scale: [1, 1.1, 1] }}
+                            transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+                            className="p-3 bg-green-100 rounded-xl"
+                          >
+                            <Activity className="w-6 h-6 text-green-600" />
+                          </motion.div>
+                          <div>
+                            <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                              VO₂ Máx (Calculado)
+                              <span className="text-xs bg-green-200 text-green-700 px-2 py-1 rounded-full">Automático</span>
+                            </h3>
+                            <p className="text-sm text-gray-600">Consumo Máximo de Oxígeno</p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <motion.div
+                            key={potenciaAerobica}
+                            initial={{ scale: 1.2 }}
+                            animate={{ scale: 1 }}
+                            className="text-4xl font-bold text-green-600"
+                          >
+                            {potenciaAerobica.toFixed(2)}
+                          </motion.div>
+                          <div className="text-sm text-gray-500 font-medium">ml/kg/min</div>
+                        </div>
+                      </div>
+                      <div className="mt-4 flex items-center gap-2 text-sm text-gray-600">
+                        <Info className="w-4 h-4" />
+                        <span>Calculado desde velocidad: <strong>{parseFloat(velocidad).toFixed(2)} km/h</strong></span>
+                      </div>
+                    </motion.div>
+                  )}
                 </motion.div>
               )}
             </AnimatePresence>

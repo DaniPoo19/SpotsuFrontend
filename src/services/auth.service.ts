@@ -2,14 +2,7 @@ import axios from 'axios';
 import { LoginCredentials, AuthResponse, User, Athlete } from '@/types/auth.types';
 import API_ENDPOINTS from '../api/endpoints';
 import { LoginDTO, LoginResponseDTO, RegisterDTO, UserDTO, PersonDTO, UserRole } from '../types/dtos';
-
-// Configuración de axios
-const api = axios.create({
-  baseURL: '/api',
-  headers: {
-    'Content-Type': 'application/json',
-  },
-});
+import { api } from '@/lib/axios'; // Usar la instancia centralizada
 
 class AuthService {
   private readonly TOKEN_KEY = 'auth_token';

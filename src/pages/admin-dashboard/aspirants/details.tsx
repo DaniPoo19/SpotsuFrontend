@@ -152,6 +152,18 @@ export const AspirantPage = () => {
     const fetchAspirant = async () => {
       if (!id) return;
       
+      // RESETEAR el ref cuando cambia el ID para permitir nueva carga
+      console.log('[] ID de aspirante cambió, reseteando refs');
+      postulationFetchedRef.current = false;
+      historyLoadedRef.current.clear();
+      docsLoadedRef.current.clear();
+      
+      // LIMPIAR datos anteriores
+      setExistingResults([]);
+      setHasMeasures(false);
+      setHasAllMeasures(false);
+      setActivePostulation(null);
+      
       updateLoadingState('aspirant', true);
       try {
         const data = await aspirantsService.getById(id);
@@ -319,11 +331,22 @@ export const AspirantPage = () => {
     }
   };
 
-  // Función para cargar resultados existentes
+  // Función para cargar resultados existentes FILTRADOS por postulation_id
   const loadExistingResults = async (postulationId: string) => {
     try {
+      console.log('[] Cargando resultados para postulación:', postulationId);
       const results = await morphologicalService.getVariableResults(postulationId);
-      setExistingResults(results);
+      
+      // FILTRAR resultados para asegurar que solo sean de esta postulación
+      const filteredResults = (results as any[]).filter(r => {
+        const rPostId = r.postulation?.id || r.postulation_id;
+        return rPostId === postulationId;
+      });
+      
+      console.log('[] Resultados totales recibidos:', results.length);
+      console.log('[] Resultados filtrados para esta postulación:', filteredResults.length);
+      
+      setExistingResults(filteredResults);
     } catch (error) {
       console.error('Error al cargar resultados existentes:', error);
       setExistingResults([]);
@@ -334,9 +357,19 @@ export const AspirantPage = () => {
     try {
       console.log('[] Inicializando medidas para postulación:', postulationId);
       const results = await morphologicalService.getVariableResults(postulationId);
-      setExistingResults(results);
       
-      const meaningful = (results as any[]).filter(r => r.postulation?.id === postulationId && r.result !== null && r.result !== undefined);
+      // FILTRAR resultados para asegurar que solo sean de esta postulación
+      const filteredResults = (results as any[]).filter(r => {
+        const rPostId = r.postulation?.id || r.postulation_id;
+        return rPostId === postulationId;
+      });
+      
+      console.log('[] Resultados totales recibidos en init:', results.length);
+      console.log('[] Resultados filtrados en init:', filteredResults.length);
+      
+      setExistingResults(filteredResults);
+      
+      const meaningful = filteredResults.filter(r => r.result !== null && r.result !== undefined);
       const has = meaningful.length > 0;
       
       // Establecer hasMeasures inmediatamente para evitar parpadeo
@@ -395,7 +428,17 @@ export const AspirantPage = () => {
 
   // Utilidad de formato se eliminó; no se usa aquí
 
-  const uploadsBase = `${import.meta.env.VITE_API_URL || '/api'}/uploads/`;
+  // Obtener la URL base del servidor
+  // Si tenemos VITE_API_URL separada, usarla directamente
+  // Si no, extraerla de la URL completa
+  const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+  const serverBaseUrl = BASE_URL.includes('/api/v1') 
+    ? BASE_URL.replace(/\/(tracksport|spotsu)\/api\/v1\/?$/, '')
+    : BASE_URL;
+  const uploadsBase = `${serverBaseUrl}/uploads/`;
+  
+  console.log('[Aspirants Details] Server Base URL:', serverBaseUrl);
+  console.log('[Aspirants Details] Uploads Base:', uploadsBase);
 
   const fetchPostulationForAthlete = async (athleteId: string) => {
     try {
@@ -631,9 +674,10 @@ export const AspirantPage = () => {
           // Si ya es una URL completa, retornarla
           if (/^https?:\/\//.test(path)) return path;
           
-          // Si es certificado médico o consentimiento informado, usar el prefijo específico
+          // Si es certificado médico o consentimiento informado, o cualquier documento
+          // usar la URL base del servidor desde variables de entorno
           if (isMedicalOrConsent) {
-            return `https://api.tracksport.socratesunicordoba.co${path.startsWith('/') ? path : `/${path}`}`;
+            return `${serverBaseUrl}${path.startsWith('/') ? path : `/${path}`}`;
           }
           
           // Si es un path relativo, construir URL completa
@@ -770,6 +814,12 @@ export const AspirantPage = () => {
     const obtainPostulation = async () => {
       if (!aspirant || postulationFetchedRef.current) return;
       
+      // LIMPIAR resultados anteriores cuando cambia el aspirante
+      console.log('[] Limpiando resultados anteriores al cambiar aspirante');
+      setExistingResults([]);
+      setHasMeasures(false);
+      setHasAllMeasures(false);
+      
       updateLoadingState('postulation', true);
       updateLoadingState('measurements', true);
       
@@ -852,6 +902,52 @@ export const AspirantPage = () => {
     loadScores();
   }, [activePostulation?.id, hasAllMeasures]);
 
+  // Memoizar initialData para evitar re-construcción en cada render
+  const initialData = React.useMemo(() => {
+    if (!morphologicalVariables.length || !existingResults.length) {
+      return undefined;
+    }
+
+    // Función auxiliar para encontrar resultado de una variable por nombre
+    const getResultByVariableName = (names: string[]) => {
+      const normalize = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      
+      // Buscar la variable morfológica
+      const variable = morphologicalVariables.find(v => {
+        const normalized = normalize(v.name);
+        return names.some(name => normalized.includes(normalize(name)));
+      });
+      
+      if (!variable) {
+        return undefined;
+      }
+      
+      // Buscar el resultado correspondiente
+      const result = existingResults.find((r: any) => {
+        const varId = r.morphological_variable_id || r.morphological_variable?.id;
+        return varId === variable.id;
+      });
+      
+      return result?.result;
+    };
+
+    // Construir objeto de datos iniciales con TODAS las variables
+    const data = {
+      estatura: getResultByVariableName(['estatura', 'altura', 'height', 'talla']),
+      pesoCorporal: getResultByVariableName(['peso corporal', 'peso']),
+      imc: getResultByVariableName(['imc', 'indice de masa', 'bmi']),
+      masaMuscular: getResultByVariableName(['masa muscular', 'muscle mass']),
+      masaGrasa: getResultByVariableName(['masa grasa', 'fat mass']),
+      grasaVisceral: getResultByVariableName(['grasa visceral', 'visceral fat']),
+      edadMetabolica: getResultByVariableName(['edad metabolica', 'edad metabólica', 'metabolic age']),
+      masaOsea: getResultByVariableName(['masa osea', 'masa ósea', 'bone mass']),
+      potenciaAerobica: getResultByVariableName(['potencia aerobica', 'potencia aeróbica', 'aerobica'])
+    };
+    
+    console.log('[] Datos iniciales memoizados construidos:', data);
+    return data;
+  }, [morphologicalVariables, existingResults]);
+
   if (!aspirant) {
     return (
       <div className="p-8">
@@ -880,52 +976,6 @@ export const AspirantPage = () => {
         </div>
       );
     }
-
-    // Función auxiliar para encontrar resultado de una variable por nombre
-    const getResultByVariableName = (names: string[]) => {
-      const normalize = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-      
-      // Buscar la variable morfológica
-      const variable = morphologicalVariables.find(v => {
-        const normalized = normalize(v.name);
-        return names.some(name => normalized.includes(normalize(name)));
-      });
-      
-      if (!variable) {
-        console.log(`[] Variable no encontrada para términos: ${names.join(', ')}`);
-        return undefined;
-      }
-      
-      // Buscar el resultado correspondiente
-      const result = existingResults.find((r: any) => {
-        const varId = r.morphological_variable_id || r.morphological_variable?.id;
-        return varId === variable.id;
-      });
-      
-      if (result) {
-        console.log(`[] Resultado encontrado para ${variable.name}:`, result.result);
-      } else {
-        console.log(`[] No hay resultado para ${variable.name}`);
-      }
-      
-      return result?.result;
-    };
-
-    // Construir objeto de datos iniciales con TODAS las variables
-    console.log('[] Prellenando datos con resultados existentes:', existingResults.length);
-    const initialData = {
-      estatura: getResultByVariableName(['estatura', 'altura', 'height', 'talla']),
-      pesoCorporal: getResultByVariableName(['peso corporal', 'peso']),
-      imc: getResultByVariableName(['imc', 'indice de masa', 'bmi']),
-      masaMuscular: getResultByVariableName(['masa muscular', 'muscle mass']),
-      masaGrasa: getResultByVariableName(['masa grasa', 'fat mass']),
-      grasaVisceral: getResultByVariableName(['grasa visceral', 'visceral fat']),
-      edadMetabolica: getResultByVariableName(['edad metabolica', 'edad metabólica', 'metabolic age']),
-      masaOsea: getResultByVariableName(['masa osea', 'masa ósea', 'bone mass']),
-      potenciaAerobica: getResultByVariableName(['potencia aerobica', 'potencia aeróbica', 'aerobica'])
-    };
-    
-    console.log('[] Datos iniciales construidos:', initialData);
 
     return (
       <React.Suspense fallback={<div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"><div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-[#006837]"></div></div>}>

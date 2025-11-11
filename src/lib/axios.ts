@@ -1,8 +1,22 @@
 import axios from 'axios';
 
+// Obtener la URL base de la API desde las variables de entorno
+// Soporta dos formatos:
+// 1. VITE_API_URL completo: http://localhost:3000/tracksport/api/v1
+// 2. VITE_API_URL + VITE_API_PREFIX: http://localhost:3000 + /tracksport/api/v1
+const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+const API_PREFIX = import.meta.env.VITE_API_PREFIX || '/tracksport/api/v1';
+
+// Si BASE_URL ya incluye el prefijo, usarlo tal cual; sino, concatenar
+const API_BASE_URL = BASE_URL.includes('/api/v1') ? BASE_URL : `${BASE_URL}${API_PREFIX}`;
+
+console.log('[Axios Config] Base URL:', BASE_URL);
+console.log('[Axios Config] API Prefix:', API_PREFIX);
+console.log('[Axios Config] Using API Base URL:', API_BASE_URL);
+
 export const api = axios.create({
-  // Endpoints directos sin prefijo
-  baseURL: '/api',
+  baseURL: API_BASE_URL,
+  timeout: 30000, // 30 segundos
 });
 
 // Interceptor para agregar el token de autenticación

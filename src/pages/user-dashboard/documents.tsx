@@ -1,9 +1,8 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { FileText, CheckCircle2, XCircle, AlertCircle, Upload, Trash2, Eye, RefreshCw, ArrowLeft, Calendar, Plus, ChevronRight } from 'lucide-react';
+import { FileText, CheckCircle2, XCircle, AlertCircle, Upload, Trash2, Eye, RefreshCw, ArrowLeft, Calendar, Plus, ChevronRight, Download } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { toast } from 'react-hot-toast';
 import { motion } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
@@ -11,6 +10,7 @@ import { attachedDocumentsService, CreateAttachedDocumentDTO } from '@/services/
 import { athletesService } from '@/services/athletes.service';
 import { attachedDocumentTypesService, AttachedDocumentType } from '@/services/attached-document-types.service';
 import { postulationService } from '@/services/postulation.service';
+import { reportsService } from '@/services/reports.service';
 
 interface AttachedDocument {
   id: string;
@@ -47,6 +47,7 @@ export const DocumentsPage = () => {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState<string | null>(null);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
+  const [downloadingReport, setDownloadingReport] = useState(false);
   
   // Estado de la URL - si viene con una postulación específica
   const postulationIdFromState = location.state?.postulationId;
@@ -193,7 +194,6 @@ export const DocumentsPage = () => {
   }, [loadDocuments]);
 
   const handleDownloadDocument = useCallback((document: AttachedDocument) => {
-    const apiHost = 'https://api.tracksport.socratesunicordoba.co';
     const path = document.path;
     
     if (!path) {
@@ -207,11 +207,46 @@ export const DocumentsPage = () => {
       return;
     }
     
-    // Construir URL absoluta con host API
+    // Obtener la URL base del servidor
+    // Si tenemos VITE_API_URL separada, usarla directamente
+    // Si no, extraerla de la URL completa
+    const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+    const serverBaseUrl = BASE_URL.includes('/api/v1') 
+      ? BASE_URL.replace(/\/(tracksport|spotsu)\/api\/v1\/?$/, '')
+      : BASE_URL;
+    
+    // Construir URL absoluta con el servidor base
     const normalizedPath = path.startsWith('/') ? path : `/${path}`;
-    const fileUrl = `${apiHost}${normalizedPath}`;
+    const fileUrl = `${serverBaseUrl}${normalizedPath}`;
+    
+    console.log('[Documents] Server Base URL:', serverBaseUrl);
+    console.log('[Documents] Opening document:', fileUrl);
     window.open(fileUrl, '_blank');
   }, []);
+
+  const handleDownloadIndividualReport = useCallback(async () => {
+    if (!selectedPostulation) {
+      toast.error('No hay postulación seleccionada');
+      return;
+    }
+
+    if (selectedPostulation.status !== 'completed') {
+      toast.error('El reporte solo está disponible cuando la postulación está completada');
+      return;
+    }
+
+    setDownloadingReport(true);
+    try {
+      const athleteName = athlete?.name + ' ' + athlete?.last_name || 'Deportista';
+      await reportsService.downloadIndividualReportPDF(selectedPostulation.id, athleteName);
+      toast.success('Reporte individual descargado exitosamente');
+    } catch (error: any) {
+      console.error('Error descargando reporte individual:', error);
+      toast.error(error.message || 'Error al descargar el reporte. Por favor, intenta de nuevo.');
+    } finally {
+      setDownloadingReport(false);
+    }
+  }, [selectedPostulation, athlete]);
 
   // Memoizar datos calculados para la postulación seleccionada
   const documentsByType = useMemo(() => {
@@ -257,36 +292,6 @@ export const DocumentsPage = () => {
       };
     });
   }, [documents, documentTypes, selectedPostulation]);
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'completed':
-        return 'text-green-600 bg-green-50 border-green-200';
-      case 'pending':
-        return 'text-yellow-600 bg-yellow-50 border-yellow-200';
-      case 'rejected':
-        return 'text-orange-600 bg-orange-50 border-orange-200';
-      case 'missing':
-        return 'text-red-600 bg-red-50 border-red-200';
-      default:
-        return 'text-gray-600 bg-gray-50 border-gray-200';
-    }
-  };
-
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'completed':
-        return <CheckCircle2 className="w-5 h-5" />;
-      case 'pending':
-        return <AlertCircle className="w-5 h-5" />;
-      case 'rejected':
-        return <XCircle className="w-5 h-5" />;
-      case 'missing':
-        return <XCircle className="w-5 h-5" />;
-      default:
-        return <FileText className="w-5 h-5" />;
-    }
-  };
 
   const formatDate = useCallback((dateString: string) => {
     if (!dateString) return 'Fecha no disponible';
@@ -336,29 +341,31 @@ export const DocumentsPage = () => {
       return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50/30 to-green-50/30 p-4 md:p-8">
       <div className="max-w-7xl mx-auto">
-        {/* Header mejorado */}
+        {/* Header mejorado y responsive */}
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8"
+          className="flex flex-col gap-4 mb-8"
         >
-          <div>
-            <h1 className="text-4xl font-bold bg-gradient-to-r from-[#006837] to-[#00a65a] bg-clip-text text-transparent">
-              📄 Mis Documentos
-            </h1>
-            <p className="text-gray-600 mt-2 text-lg">
-              Selecciona una postulación para ver y gestionar tus documentos
-            </p>
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div className="flex-1">
+              <h1 className="text-3xl sm:text-4xl font-bold bg-gradient-to-r from-[#006837] to-[#00a65a] bg-clip-text text-transparent">
+                📄 Mis Documentos
+              </h1>
+              <p className="text-gray-600 mt-2 text-base sm:text-lg">
+                Selecciona una postulación para ver y gestionar tus documentos
+              </p>
+            </div>
+            <Button
+              onClick={loadPostulations}
+              disabled={loading}
+              variant="outline"
+              className="flex items-center gap-2 shadow-md hover:shadow-lg transition-shadow bg-white/80 backdrop-blur-sm w-full sm:w-auto"
+            >
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+              Actualizar
+            </Button>
           </div>
-          <Button
-            onClick={loadPostulations}
-            disabled={loading}
-            variant="outline"
-            className="flex items-center gap-2 shadow-md hover:shadow-lg transition-shadow bg-white/80 backdrop-blur-sm"
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-            Actualizar
-          </Button>
         </motion.div>
 
                   {loading ? (
@@ -484,398 +491,302 @@ export const DocumentsPage = () => {
 
   // Vista de documentos de la postulación seleccionada
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50/30 to-green-50/30 p-4 md:p-8">
-      <div className="max-w-7xl mx-auto">
-        {/* Header con botón de regreso mejorado */}
+    <div className="min-h-screen bg-gray-50 p-4 md:p-6 lg:p-8">
+      <div className="max-w-5xl mx-auto">
+        {/* Header limpio y minimalista */}
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="flex items-center gap-4 mb-8"
+          className="mb-6"
         >
-          <Button
-            variant="outline"
+          {/* Botón de regreso */}
+          <button
             onClick={() => setSelectedPostulation(null)}
-            className="flex items-center gap-2 shadow-md hover:shadow-lg transition-shadow bg-white/80 backdrop-blur-sm"
+            className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 mb-4 transition-colors"
           >
             <ArrowLeft className="w-4 h-4" />
             Regresar
-          </Button>
-          <div className="flex-1">
-            <h1 className="text-4xl font-bold bg-gradient-to-r from-[#006837] to-[#00a65a] bg-clip-text text-transparent">
-              📄 Documentos - {selectedPostulation.semester?.name}
-            </h1>
-            <p className="text-gray-600 mt-2 text-lg">
-              Gestiona los documentos requeridos para esta postulación
-            </p>
-          </div>
-          <div className="flex flex-col items-end gap-1">
-            <Button
+          </button>
+          
+          {/* Título y descripción simplificados */}
+          <div className="flex flex-col sm:flex-row justify-between items-start gap-4 mb-4">
+            <div className="flex-1">
+              <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-1">
+                📄 Documentos - {selectedPostulation.semester?.name}
+              </h1>
+              <p className="text-sm text-gray-500">
+                Gestiona los documentos requeridos para esta postulación
+              </p>
+            </div>
+            <button
               onClick={loadDocuments}
               disabled={loading}
-              variant="outline"
-              className="flex items-center gap-2 shadow-md hover:shadow-lg transition-shadow bg-white/80 backdrop-blur-sm"
+              className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
             >
               <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
               Actualizar
-            </Button>
-            {lastUpdate && (
-              <span className="text-xs text-gray-500">
-                Última actualización: {lastUpdate.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-              </span>
-            )}
+            </button>
           </div>
+          
+          {lastUpdate && (
+            <p className="text-xs text-gray-400">
+              Última actualización: {lastUpdate.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
+            </p>
+          )}
         </motion.div>
 
-        {/* Resumen de documentos */}
+        {/* Resumen simplificado de documentos */}
         {!loading && documentsByType.length > 0 && (
           <motion.div
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
             className="mb-6"
           >
-            <Card className="border-none shadow-lg bg-white/80 backdrop-blur-sm">
-              <CardContent className="p-6">
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div className="flex items-center gap-3">
-                    <div className="p-3 rounded-xl bg-blue-100">
-                      <FileText className="w-6 h-6 text-blue-600" />
-                    </div>
-                    <div>
-                      <p className="text-2xl font-bold text-gray-900">{documentStats.total}</p>
-                      <p className="text-xs text-gray-600">Total Requeridos</p>
-                    </div>
-                  </div>
-                  
-                  {documentStats.missing > 0 && (
-                    <div className="flex items-center gap-3">
-                      <div className="p-3 rounded-xl bg-red-100">
-                        <XCircle className="w-6 h-6 text-red-600" />
-                      </div>
-                      <div>
-                        <p className="text-2xl font-bold text-red-600">{documentStats.missing}</p>
-                        <p className="text-xs text-gray-600">Faltantes</p>
-                      </div>
-                    </div>
-                  )}
-                  
-                  {documentStats.pending > 0 && (
-                    <div className="flex items-center gap-3">
-                      <div className="p-3 rounded-xl bg-yellow-100">
-                        <AlertCircle className="w-6 h-6 text-yellow-600" />
-                      </div>
-                      <div>
-                        <p className="text-2xl font-bold text-yellow-600">{documentStats.pending}</p>
-                        <p className="text-xs text-gray-600">En Revisión</p>
-                      </div>
-                    </div>
-                  )}
-                  
-                  {documentStats.completed > 0 && (
-                    <div className="flex items-center gap-3">
-                      <div className="p-3 rounded-xl bg-green-100">
-                        <CheckCircle2 className="w-6 h-6 text-green-600" />
-                      </div>
-                      <div>
-                        <p className="text-2xl font-bold text-green-600">{documentStats.completed}</p>
-                        <p className="text-xs text-gray-600">Aprobados</p>
-                      </div>
-                    </div>
-                  )}
-                  
-                  {documentStats.rejected > 0 && (
-                    <div className="flex items-center gap-3">
-                      <div className="p-3 rounded-xl bg-orange-100">
-                        <XCircle className="w-6 h-6 text-orange-600" />
-                      </div>
-                      <div>
-                        <p className="text-2xl font-bold text-orange-600">{documentStats.rejected}</p>
-                        <p className="text-xs text-gray-600">Rechazados</p>
-                      </div>
-                    </div>
-                  )}
+            <div className="bg-white border border-gray-200 rounded-xl p-5">
+              {/* Resumen compacto */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
+                <div className="text-center">
+                  <p className="text-2xl font-bold text-gray-900">{documentStats.total}</p>
+                  <p className="text-xs text-gray-500 mt-1">Total Requeridos</p>
                 </div>
-                
-                {documentStats.missing > 0 && (
-                  <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-                    <p className="text-sm text-red-800 font-medium flex items-center gap-2">
-                      <AlertCircle className="w-4 h-4" />
-                      Tienes {documentStats.missing} documento{documentStats.missing > 1 ? 's' : ''} pendiente{documentStats.missing > 1 ? 's' : ''} por subir. Por favor, completa tu documentación.
-                    </p>
+                <div className="text-center">
+                  <p className="text-2xl font-bold text-green-600">{documentStats.completed}</p>
+                  <p className="text-xs text-gray-500 mt-1">Aprobados</p>
+                </div>
+                {documentStats.pending > 0 && (
+                  <div className="text-center">
+                    <p className="text-2xl font-bold text-gray-600">{documentStats.pending}</p>
+                    <p className="text-xs text-gray-500 mt-1">En Revisión</p>
                   </div>
                 )}
-              </CardContent>
-            </Card>
+                {documentStats.missing > 0 && (
+                  <div className="text-center">
+                    <p className="text-2xl font-bold text-gray-400">{documentStats.missing}</p>
+                    <p className="text-xs text-gray-500 mt-1">Pendientes</p>
+                  </div>
+                )}
+              </div>
+              
+              {/* Nota informativa solo si hay documentos faltantes */}
+              {documentStats.missing > 0 && (
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                  <p className="text-sm text-gray-700 flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5 text-gray-400" />
+                    <span>
+                      Tienes {documentStats.missing} documento{documentStats.missing > 1 ? 's' : ''} pendiente{documentStats.missing > 1 ? 's' : ''} por subir.
+                    </span>
+                  </p>
+                </div>
+              )}
+
+              {/* Botón de descarga de reporte - minimalista */}
+              {selectedPostulation.status === 'completed' && (
+                <button
+                  onClick={handleDownloadIndividualReport}
+                  disabled={downloadingReport}
+                  className={`w-full mt-4 flex items-center justify-center gap-2 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
+                    downloadingReport
+                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                      : 'bg-[#006837] hover:bg-[#005229] text-white'
+                  }`}
+                >
+                  {downloadingReport ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>Descargando...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-4 h-4" />
+                      <span>Descargar Mi Reporte</span>
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
           </motion.div>
         )}
 
                 {loading ? (
-          <div className="grid gap-6">
+          <div className="space-y-4">
             {[...Array(2)].map((_, i) => (
-              <Card key={i} className="border-none shadow-xl bg-white/80 backdrop-blur-sm animate-pulse">
-                <CardContent className="p-8">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                      <div className="w-16 h-16 bg-gray-200 rounded-xl"></div>
-                      <div className="space-y-2">
-                        <div className="w-32 h-5 bg-gray-200 rounded"></div>
-                        <div className="w-48 h-4 bg-gray-200 rounded"></div>
-                        <div className="w-40 h-3 bg-gray-200 rounded"></div>
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <div className="w-24 h-8 bg-gray-200 rounded-full"></div>
-                      <div className="w-20 h-8 bg-gray-200 rounded"></div>
-                    </div>
+              <div key={i} className="bg-white border border-gray-200 rounded-lg p-5 animate-pulse">
+                <div className="flex items-start justify-between gap-4 mb-4">
+                  <div className="flex-1 space-y-2">
+                    <div className="w-48 h-5 bg-gray-200 rounded"></div>
+                    <div className="w-full h-4 bg-gray-100 rounded"></div>
                   </div>
-                </CardContent>
-              </Card>
+                  <div className="w-24 h-6 bg-gray-100 rounded-full"></div>
+                </div>
+                <div className="flex gap-2 ml-8">
+                  <div className="w-20 h-9 bg-gray-100 rounded-lg"></div>
+                  <div className="w-20 h-9 bg-gray-100 rounded-lg"></div>
+                </div>
+              </div>
             ))}
           </div>
         ) : documentsByType.length === 0 ? (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-          >
-            <Card className="border-none shadow-xl bg-white/80 backdrop-blur-sm">
-              <CardContent className="p-16 text-center">
-                <div className="relative mb-6">
-                  <div className="w-24 h-24 bg-gradient-to-br from-orange-100 to-orange-200 rounded-full mx-auto flex items-center justify-center">
-                    <AlertCircle className="w-12 h-12 text-orange-500" />
-                  </div>
-                </div>
-                <h3 className="text-2xl font-bold text-gray-800 mb-2">
-                  Tipos de Documentos No Configurados
-                </h3>
-                <p className="text-gray-600 mb-4 max-w-md mx-auto">
-                  No hay tipos de documentos requeridos configurados en el sistema para esta postulación.
-                </p>
-                <p className="text-sm text-gray-500">
-                  Por favor, contacta con el administrador del sistema.
-                </p>
-              </CardContent>
-            </Card>
-          </motion.div>
+          <div className="bg-white border border-gray-200 rounded-lg p-12 text-center">
+            <div className="w-16 h-16 bg-gray-100 rounded-full mx-auto flex items-center justify-center mb-4">
+              <AlertCircle className="w-8 h-8 text-gray-400" />
+            </div>
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+              Tipos de Documentos No Configurados
+            </h3>
+            <p className="text-sm text-gray-600 mb-2 max-w-md mx-auto">
+              No hay tipos de documentos requeridos configurados en el sistema para esta postulación.
+            </p>
+            <p className="text-xs text-gray-500">
+              Por favor, contacta con el administrador del sistema.
+            </p>
+          </div>
         ) : (
-          <div className="grid gap-6">
+          <div className="space-y-4">
             {documentsByType.map((docType, index) => (
               <motion.div
                 key={docType.id}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.1 }}
-                whileHover={{ scale: 1.01 }}
+                transition={{ delay: index * 0.05 }}
               >
-                <Card className="border-none shadow-xl bg-white/80 backdrop-blur-sm hover:shadow-2xl transition-all duration-300 group">
-                  <CardContent className="p-8">
-                    <div className="flex items-start justify-between">
-                      <div className="flex items-start gap-6 flex-1">
-                        <div className="p-4 rounded-2xl bg-gradient-to-br from-[#006837]/10 to-[#00a65a]/10 group-hover:from-[#006837]/20 group-hover:to-[#00a65a]/20 transition-colors">
-                          <FileText className="w-8 h-8 text-[#006837]" />
-                        </div>
-                        <div className="flex-1">
-                          <div className="flex items-center gap-3 mb-2">
-                            <h3 className="text-xl font-bold text-gray-900 group-hover:text-[#006837] transition-colors">
-                              {docType.name}
-                            </h3>
-                            {docType.required && (
-                              <span className="text-xs bg-gradient-to-r from-red-100 to-red-50 text-red-800 px-3 py-1 rounded-full border border-red-200 font-medium">
-                                Requerido
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-base text-gray-600 mb-4 leading-relaxed">
-                            {docType.description}
-                          </p>
-                          {docType.document ? (
-                            <div className={`rounded-lg p-4 space-y-2 border-2 ${
-                              docType.document.status === 'Completado' 
-                                ? 'bg-green-50 border-green-200' 
-                                : 'bg-yellow-50 border-yellow-200'
-                            }`}>
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2 text-sm text-gray-700">
-                                  <FileText className="w-4 h-4" />
-                                  <span className="font-medium">{docType.name}</span>
-                                </div>
-                                <span className={`px-3 py-1 text-xs font-bold rounded-full ${
-                                  docType.document.status === 'Completado' 
-                                    ? 'bg-green-200 text-green-800' 
-                                    : 'bg-yellow-200 text-yellow-800'
-                                }`}>
-                                  {docType.document.status === 'Completado' ? '✓ Aprobado' : '⏳ En Revisión'}
-                                </span>
-                              </div>
-                              <div className="flex items-center gap-2 text-xs text-gray-600">
-                                <span>📄 Documento PDF</span>
-                              </div>
-                              {docType.document.status === 'Completado' && (
-                                <div className="mt-2 pt-2 border-t border-green-300">
-                                  <p className="text-xs text-green-700 font-medium flex items-center gap-1">
-                                    <CheckCircle2 className="w-3 h-3" />
-                                    Este documento ha sido verificado y aprobado por el administrador
-                                  </p>
-                                </div>
-                              )}
-                              {docType.document.status === 'Pendiente' && (
-                                <div className="mt-2 pt-2 border-t border-yellow-300">
-                                  <p className="text-xs text-yellow-700 font-medium flex items-center gap-1">
-                                    <AlertCircle className="w-3 h-3" />
-                                    Tu documento está siendo revisado por el administrador
-                                  </p>
-                                </div>
-                              )}
-                            </div>
-                          ) : (
-                            <div className="bg-red-50 border-2 border-red-200 border-dashed rounded-lg p-4">
-                              <div className="flex items-center gap-2 text-sm text-red-700">
-                                <XCircle className="w-5 h-5" />
-                                <span className="font-semibold">Este documento aún no ha sido cargado</span>
-                              </div>
-                              <p className="text-xs text-red-600 mt-1">
-                                Por favor, sube este documento para completar tu postulación
-                              </p>
-                            </div>
+                <div className="bg-white border border-gray-200 rounded-lg hover:border-gray-300 transition-colors">
+                  <div className="p-5">
+                    {/* Header del documento */}
+                    <div className="flex items-start justify-between gap-4 mb-4">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-3 mb-2">
+                          <FileText className="w-5 h-5 text-gray-400 flex-shrink-0" />
+                          <h3 className="text-base font-semibold text-gray-900">
+                            {docType.name}
+                          </h3>
+                          {docType.required && (
+                            <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-600 rounded">
+                              Requerido
+                            </span>
                           )}
                         </div>
+                        <p className="text-sm text-gray-500 ml-8">
+                          {docType.description}
+                        </p>
                       </div>
                       
-                      <div className="flex flex-col items-end gap-4 ml-6">
-                        {/* Estado */}
-                        <div className={`flex items-center gap-2 px-4 py-2 rounded-full border-2 font-medium text-sm ${getStatusColor(docType.status)}`}>
-                          {getStatusIcon(docType.status)}
-                          <span>
-                            {docType.status === 'completed' ? '✓ Aprobado' : 
-                             docType.status === 'pending' ? '⏳ En Revisión' : 
-                             docType.status === 'rejected' ? 'Rechazado' : '❌ Faltante'}
+                      {/* Estado badge minimalista */}
+                      <div className="flex-shrink-0">
+                        {docType.status === 'completed' && (
+                          <span className="inline-flex items-center gap-1 text-xs px-3 py-1 bg-green-50 text-green-700 rounded-full border border-green-200">
+                            <CheckCircle2 className="w-3 h-3" />
+                            Aprobado
                           </span>
-                        </div>
+                        )}
+                        {docType.status === 'pending' && (
+                          <span className="inline-flex items-center gap-1 text-xs px-3 py-1 bg-gray-100 text-gray-700 rounded-full border border-gray-200">
+                            <AlertCircle className="w-3 h-3" />
+                            En Revisión
+                          </span>
+                        )}
+                        {docType.status === 'missing' && (
+                          <span className="inline-flex items-center gap-1 text-xs px-3 py-1 bg-gray-50 text-gray-500 rounded-full border border-gray-200">
+                            <XCircle className="w-3 h-3" />
+                            Pendiente
+                          </span>
+                        )}
+                      </div>
+                    </div>
 
-                        {/* Acciones */}
-                        <div className="flex flex-col items-end gap-2">
-                          {docType.document ? (
-                            <>
-                              <div className="flex items-center gap-2">
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => handleDownloadDocument(docType.document!)}
-                                  className="flex items-center gap-2 bg-white/50 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-700 transition-all"
-                                >
-                                  <Eye className="w-4 h-4" />
-                                  Ver
-                                </Button>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => handleDeleteDocument(docType.document!.id)}
-                                  className="flex items-center gap-2 bg-white/50 hover:bg-red-50 hover:border-red-300 text-red-600 hover:text-red-700 transition-all"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                  Eliminar
-                                </Button>
-                              </div>
-                              
-                              {/* Botón de resubir si el documento fue rechazado */}
-                              {docType.canReupload && docType.status === 'rejected' && (
-                                <div className="flex items-center gap-2 w-full">
-                              <Input
-                                type="file"
-                                accept=".pdf,application/pdf"
-                                onChange={(e) => {
-                                  const file = e.target.files?.[0];
-                                  if (file) {
-                                    handleFileUpload(file, docType.id, docType.document?.id);
-                                  }
-                                }}
-                                className="hidden"
-                                id={`file-reupload-${docType.id}`}
-                                disabled={uploading === docType.id}
-                              />
-                                  <Button
-                                    onClick={() => document.getElementById(`file-reupload-${docType.id}`)?.click()}
-                                    disabled={uploading === docType.id}
-                                    size="sm"
-                                    className="bg-gradient-to-r from-orange-600 to-orange-700 hover:from-orange-700 hover:to-orange-800 text-white flex items-center gap-2 w-full"
-                                  >
-                                    {uploading === docType.id ? (
-                                      <>
-                                        <RefreshCw className="w-4 h-4 animate-spin" />
-                                        Subiendo...
-                                      </>
-                                    ) : (
-                                      <>
-                                        <Upload className="w-4 h-4" />
-                                        Resubir Documento
-                                      </>
-                                    )}
-                                  </Button>
-                                </div>
-                              )}
-                            </>
-                          ) : (
-                            <div className="flex flex-col gap-2 w-full min-w-[180px]">
-                              <Input
-                                type="file"
-                                accept=".pdf,application/pdf"
-                                onChange={(e) => {
-                                  const file = e.target.files?.[0];
-                                  if (file) {
-                                    handleFileUpload(file, docType.id, docType.document?.id);
-                                  }
-                                }}
-                                className="hidden"
-                                id={`file-upload-${docType.id}`}
-                                disabled={uploading === docType.id}
-                              />
-                              <Button
-                                onClick={() => document.getElementById(`file-upload-${docType.id}`)?.click()}
-                                disabled={uploading === docType.id}
-                                className="bg-gradient-to-r from-[#006837] to-[#00a65a] hover:from-[#005229] hover:to-[#008347] text-white flex items-center justify-center gap-2 px-6 py-3 text-base font-semibold shadow-lg hover:shadow-xl transition-all w-full"
-                              >
-                                {uploading === docType.id ? (
-                                  <>
-                                    <RefreshCw className="w-5 h-5 animate-spin" />
-                                    Subiendo...
-                                  </>
-                                ) : (
-                                  <>
-                                    <Upload className="w-5 h-5" />
-                                    Subir Documento
-                                  </>
-                                )}
-                              </Button>
-                              <p className="text-xs text-center text-gray-500">
-                                Solo archivos PDF
-                              </p>
-                            </div>
+                    {/* Información del documento cargado */}
+                    {docType.document && (
+                      <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 mb-3 ml-8">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-gray-700">📄 Documento PDF</span>
+                          {docType.document.status === 'Completado' && (
+                            <span className="text-xs text-green-600 font-medium">
+                              ✓ Verificado por administrador
+                            </span>
                           )}
                         </div>
                       </div>
+                    )}
+
+                    {/* Botones de acción */}
+                    <div className="flex flex-wrap gap-2 ml-8">
+                      {docType.document ? (
+                        <>
+                          <button
+                            onClick={() => handleDownloadDocument(docType.document!)}
+                            className="inline-flex items-center gap-2 px-4 py-2 text-sm text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                          >
+                            <Eye className="w-4 h-4" />
+                            Ver
+                          </button>
+                          <button
+                            onClick={() => handleDeleteDocument(docType.document!.id)}
+                            className="inline-flex items-center gap-2 px-4 py-2 text-sm text-red-600 bg-white border border-red-300 rounded-lg hover:bg-red-50 transition-colors"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                            Eliminar
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <input
+                            type="file"
+                            accept=".pdf,application/pdf"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) {
+                                handleFileUpload(file, docType.id, docType.document?.id);
+                              }
+                            }}
+                            className="hidden"
+                            id={`file-upload-${docType.id}`}
+                            disabled={uploading === docType.id}
+                          />
+                          <button
+                            onClick={() => document.getElementById(`file-upload-${docType.id}`)?.click()}
+                            disabled={uploading === docType.id}
+                            className="inline-flex items-center gap-2 px-4 py-2 text-sm text-white bg-[#006837] hover:bg-[#005229] rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {uploading === docType.id ? (
+                              <>
+                                <RefreshCw className="w-4 h-4 animate-spin" />
+                                Subiendo...
+                              </>
+                            ) : (
+                              <>
+                                <Upload className="w-4 h-4" />
+                                Subir Documento
+                              </>
+                            )}
+                          </button>
+                          <p className="text-xs text-gray-500 ml-8 mt-1">
+                            Solo archivos PDF (máx. 10MB)
+                          </p>
+                        </>
+                      )}
                     </div>
-                  </CardContent>
-                </Card>
+                  </div>
+                </div>
               </motion.div>
             ))}
           </div>
         )}
 
-        {/* Información adicional */}
-        <Card className="mt-8 border-blue-200 bg-blue-50">
-          <CardContent className="p-6">
-            <div className="flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 text-blue-600 mt-0.5" />
-              <div>
-                <h4 className="font-semibold text-blue-900 mb-2">Información Importante</h4>
-                <ul className="text-sm text-blue-800 space-y-1">
-                  <li>• Los documentos requeridos son obligatorios para completar tu postulación</li>
-                  <li>• Formato soportado: Solo archivos PDF (.pdf)</li>
-                  <li>• Tamaño máximo por archivo: 10MB</li>
-                  <li>• Una vez subidos, puedes reemplazar documentos eliminando y subiendo nuevos</li>
-                </ul>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+        {/* Información adicional - simplificada */}
+        <div className="mt-6 bg-white border border-gray-200 rounded-lg p-4">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-gray-400 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <h4 className="font-medium text-gray-900 mb-2 text-sm">Información Importante</h4>
+              <ul className="text-xs text-gray-600 space-y-1">
+                <li>• Los documentos requeridos son obligatorios para completar tu postulación</li>
+                <li>• Formato soportado: Solo archivos PDF (.pdf)</li>
+                <li>• Tamaño máximo por archivo: 10MB</li>
+                <li>• Una vez subidos, puedes reemplazar documentos eliminando y subiendo nuevos</li>
+                <li>• Los documentos serán revisados por un administrador antes de ser aprobados</li>
+              </ul>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );

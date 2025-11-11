@@ -195,13 +195,22 @@ export const SportsHistoryManagementPage = () => {
 
   // Descargar certificado
   const handleDownloadCertificate = useCallback((certificateUrl: string) => {
-    const apiHost = 'https://api.tracksport.socratesunicordoba.co';
+    // Obtener la URL base del servidor
+    // Si tenemos VITE_API_URL separada, usarla directamente
+    // Si no, extraerla de la URL completa
+    const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+    const serverBaseUrl = BASE_URL.includes('/api/v1') 
+      ? BASE_URL.replace(/\/(tracksport|spotsu)\/api\/v1\/?$/, '')
+      : BASE_URL;
+    
     if (/^https?:\/\//.test(certificateUrl)) {
       window.open(certificateUrl, '_blank');
       return;
     }
     const normalizedPath = certificateUrl.startsWith('/') ? certificateUrl : `/${certificateUrl}`;
-    const fileUrl = `${apiHost}${normalizedPath}`;
+    const fileUrl = `${serverBaseUrl}${normalizedPath}`;
+    console.log('[Sports History] Server Base URL:', serverBaseUrl);
+    console.log('[Sports History] Opening certificate:', fileUrl);
     window.open(fileUrl, '_blank');
   }, []);
 
