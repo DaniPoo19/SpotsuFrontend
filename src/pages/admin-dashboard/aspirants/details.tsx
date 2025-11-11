@@ -429,12 +429,19 @@ export const AspirantPage = () => {
   // Utilidad de formato se eliminó; no se usa aquí
 
   // Obtener la URL base del servidor
-  // Si tenemos VITE_API_URL separada, usarla directamente
-  // Si no, extraerla de la URL completa
+  // En desarrollo: http://localhost:3000 (remover prefijo /tracksport/api/v1)
+  // En producción: https://api.tracksport.socratesunicordoba.co (ya está lista)
   const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-  const serverBaseUrl = BASE_URL.includes('/api/v1') 
-    ? BASE_URL.replace(/\/(tracksport|spotsu)\/api\/v1\/?$/, '')
-    : BASE_URL;
+  const API_PREFIX = import.meta.env.VITE_API_PREFIX || '';
+  
+  // Si hay prefijo, removerlo para obtener la URL base del servidor
+  let serverBaseUrl = BASE_URL;
+  if (API_PREFIX && BASE_URL.includes(API_PREFIX)) {
+    serverBaseUrl = BASE_URL.replace(API_PREFIX, '');
+  } else if (BASE_URL.includes('/api/v1')) {
+    serverBaseUrl = BASE_URL.replace(/\/(tracksport|spotsu)\/api\/v1\/?$/, '');
+  }
+  
   const uploadsBase = `${serverBaseUrl}/uploads/`;
   
   console.log('[Aspirants Details] Server Base URL:', serverBaseUrl);
