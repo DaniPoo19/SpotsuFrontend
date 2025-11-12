@@ -4,7 +4,7 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        - VITE_API_URL=https://api.tracksport.socratesunicordoba.co/tracksport/api/v1
+        - VITE_API_URL=https://api.tracksport.socratesunicordoba.co
     ports:
       - "5173:80"
     restart: unless-stopped
