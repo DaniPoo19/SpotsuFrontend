@@ -114,7 +114,7 @@ export const UserDashboardHome = () => {
           />
           <div className="p-8">
             <h1 className="text-4xl font-bold text-[#006837] mb-4">
-              Bienvenido a tu Dashboard
+              Bienvenido a TrackSport
             </h1>
             <p className="text-gray-600 mb-6">
               {athlete 

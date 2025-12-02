@@ -6,7 +6,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { DocumentTypeDTO } from '../../types/dtos';
 import { mastersService } from '../../services/masters.service';
 import axiosInstance from '../../api/axios';
-import icono2 from '@/assets/2.png';
+import icono2 from '@/assets/LogoTrackSport.png';
 import { Eye, EyeOff } from 'lucide-react';
 
 interface RegisterDTO {
@@ -189,7 +189,7 @@ export const RegisterAccountPage = () => {
               transition={{ duration: 0.5 }}
               src={icono2}
               alt="Universidad de Córdoba"
-              className="h-24 mx-auto mb-4"
+              className="h-32 mx-auto mb-4"
             />
             <motion.h2
               initial={{ opacity: 0 }}

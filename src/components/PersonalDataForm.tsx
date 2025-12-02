@@ -17,7 +17,7 @@ import API_ENDPOINTS from '../api/endpoints';
 import DatePicker, { registerLocale } from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { es } from 'date-fns/locale/es';
-import logo2 from '@/assets/2.png';
+import logo2 from '@/assets/LogoTrackSport.png';
 import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { 
   User, 

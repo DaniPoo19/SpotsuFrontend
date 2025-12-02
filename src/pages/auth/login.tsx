@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 import { toast } from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
 import { LoginDTO, DocumentTypeDTO, ApiResponse } from '../../types/dtos';
-import icono2 from '@/assets/2.png';
+import icono2 from '@/assets/LogoTrackSport.png';
 import { Eye, EyeOff } from 'lucide-react';
 import axiosInstance from '../../api/axios';
 
@@ -115,7 +115,7 @@ export const LoginPage = () => {
               transition={{ duration: 0.5 }}
               src={icono2}
               alt="Universidad de Córdoba"
-              className="h-24 mx-auto mb-4"
+              className="h-32 mx-auto mb-4"
             />
             <motion.h2
               initial={{ opacity: 0 }}
@@ -123,7 +123,7 @@ export const LoginPage = () => {
               transition={{ delay: 0.2 }}
               className="text-2xl font-bold text-[#006837]"
             >
-              TRACKSPORT
+              
             </motion.h2>
             <motion.p
               initial={{ opacity: 0 }}

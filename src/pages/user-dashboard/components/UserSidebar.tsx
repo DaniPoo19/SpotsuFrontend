@@ -11,7 +11,6 @@ import {
   UserPlus
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import logo from '@/assets/2.png';
 import { toast } from 'react-hot-toast';
 import { mastersService } from '@/services/masters.service';
 import { peopleService } from '@/services/people.service';
@@ -194,11 +193,6 @@ export const UserSidebar = ({ hasAthlete }: UserSidebarProps) => {
   return (
     <div className="bg-[#006837] text-white h-screen w-64 fixed left-0 top-0 p-4 flex flex-col">
       <div className="mb-8">
-        <img 
-          src={logo} 
-          alt="Universidad de Córdoba" 
-          className="w-20 mx-auto mb-4"
-        />
         <h1 className="text-2xl font-bold text-center">TRACKSPORT</h1>
       </div>
       

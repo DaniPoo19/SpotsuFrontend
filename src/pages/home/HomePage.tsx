@@ -1,4 +1,3 @@
-import React from 'react';
 import admin from '@/assets/adminsitrativo.jpg';
 import { useNavigate } from 'react-router-dom';
 import { ArrowRight } from 'lucide-react';
